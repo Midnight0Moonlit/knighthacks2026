@@ -141,9 +141,9 @@ body {
   margin: 0 auto 1.25rem;
   border-radius: 50%;
   background: conic-gradient(
-    #6c5ce7 0% 30%,
-    #00b894 30% 80%,
-    #fdcb6e 80% 100%
+    #ffe7a3 0% 30%,
+    #f4b6a3 30% 50%,
+    #a8d9cc 50% 100%
   );
 }
 .macro-label {
@@ -151,29 +151,24 @@ body {
   display: flex;
   flex-direction: column;
   align-items: center;
-  color: white;
-  font-size: 0.85rem;
+  color: #34404a;
+  font-size: clamp(0.65rem, 3.5vw, 0.9rem);
   font-weight: bold;
   line-height: 1.2;
   text-align: center;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
   transform: translate(-50%, -50%);
 }
 .macro-label-protein {
-  top: 64.7%;
-  left: 70.2%;
+  top: 32%;
+  left: 68%;
 }
 .macro-label-carbs {
-  top: 26.2%;
-  left: 42.3%;
-  color: #123d32;
-  text-shadow: none;
+  top: 50%;
+  left: 30%;
 }
 .macro-label-fat {
-  top: 64.7%;
-  left: 29.8%;
-  color: #4b3b00;
-  text-shadow: none;
+  top: 68%;
+  left: 68%;
 }
 
 /* WebSocket Status */
