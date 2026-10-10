@@ -13,6 +13,72 @@ const CATALOG = {
 type ItemKey = keyof typeof CATALOG;
 type MacroKey = 'protein' | 'carbs' | 'fat';
 
+const RECIPE_PREVIEWS: {
+  title: string;
+  description: string;
+  ingredients: ItemKey[];
+  time: string;
+  badge: string;
+  steps: string[];
+}[] = [
+  {
+    title: 'Apple & Banana Fruit Bowl',
+    description: 'A fresh, naturally sweet snack with crisp and creamy fruit in every bite.',
+    ingredients: ['apples', 'bananas'],
+    time: '5 min',
+    badge: 'No-cook',
+    steps: ['Wash and slice the apples and bananas.', 'Arrange the fruit in a bowl and enjoy.'],
+  },
+  {
+    title: 'Simple Seasoned Bean Bowl',
+    description: 'Warm your beans with pantry seasonings for a quick, filling bowl.',
+    ingredients: ['beans'],
+    time: '10 min',
+    badge: 'Hearty',
+    steps: ['Warm the beans in a small pot or microwave-safe bowl.', 'Season to taste and serve warm.'],
+  },
+  {
+    title: 'Apple Donut Bites',
+    description: 'Pair apple slices with donut pieces for an easy sweet-and-crunchy treat.',
+    ingredients: ['apples', 'donuts'],
+    time: '5 min',
+    badge: 'Snack',
+    steps: ['Wash and slice the apple.', 'Serve with bite-sized pieces of donut.'],
+  },
+  {
+    title: 'Banana Donut Plate',
+    description: 'Slice a banana alongside donut bites for a simple shareable dessert.',
+    ingredients: ['bananas', 'donuts'],
+    time: '5 min',
+    badge: 'Sweet',
+    steps: ['Slice the banana into bite-sized pieces.', 'Arrange with donut pieces on a plate.'],
+  },
+  {
+    title: 'Crisp Apple Snack',
+    description: 'A simple, refreshing snack made with the apples in your cart.',
+    ingredients: ['apples'],
+    time: '2 min',
+    badge: 'No-cook',
+    steps: ['Wash the apple.', 'Slice and serve as a crisp snack.'],
+  },
+  {
+    title: 'Banana Snack Plate',
+    description: 'A quick, ready-to-eat snack using your bananas.',
+    ingredients: ['bananas'],
+    time: '2 min',
+    badge: 'No-cook',
+    steps: ['Peel the banana.', 'Slice or enjoy whole.'],
+  },
+  {
+    title: 'Donut Snack Plate',
+    description: 'Turn your donuts into an easy treat to enjoy or share.',
+    ingredients: ['donuts'],
+    time: '2 min',
+    badge: 'Sweet',
+    steps: ['Place the donuts on a plate.', 'Share and enjoy.'],
+  },
+];
+
 type MacroProgress = {
   key: MacroKey;
   name: string;
@@ -134,6 +200,9 @@ function CartDashboard() {
   const [macroLoadStatus, setMacroLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [macroLoadError, setMacroLoadError] = useState('');
   const [pendingMacroItems, setPendingMacroItems] = useState<string[]>([]);
+  const [recipePreference, setRecipePreference] = useState('');
+  const [isRecipeMode, setIsRecipeMode] = useState(false);
+  const [recipeIndex, setRecipeIndex] = useState(0);
   const [macroGoalInputs, setMacroGoalInputs] = useState<Record<MacroKey, string>>({
     protein: String(DEFAULT_GOALS.protein),
     carbs: String(DEFAULT_GOALS.carbs),
@@ -149,6 +218,7 @@ function CartDashboard() {
   const [pulsingItem, setPulsingItem] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const macroPollingRef = useRef(false);
+  const recipeSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const loadMacrosAsync = async () => {
     if (macroPollingRef.current) return;
@@ -318,6 +388,33 @@ function CartDashboard() {
   const currentTotal = currentSubtotal + currentTax;
   const isOverBudget = budget > 0 && currentTotal > budget;
   const progressPercentage = budget > 0 ? Math.min((currentTotal / budget) * 100, 100) : 0;
+  const availableRecipes = RECIPE_PREVIEWS.filter((recipe) =>
+    recipe.ingredients.every((item) => inventory[item] > 0),
+  );
+  const selectedRecipeIndex = availableRecipes.length > 0
+    ? recipeIndex % availableRecipes.length
+    : 0;
+  const selectedRecipe = availableRecipes[selectedRecipeIndex];
+
+  const showRecipe = (direction: -1 | 1) => {
+    if (availableRecipes.length < 2) return;
+    setRecipeIndex((current) => (
+      (current + direction + availableRecipes.length) % availableRecipes.length
+    ));
+  };
+
+  const handleRecipeSwipe = (x: number, y: number) => {
+    const start = recipeSwipeStartRef.current;
+    recipeSwipeStartRef.current = null;
+    if (!start) return;
+
+    const horizontalDistance = x - start.x;
+    const verticalDistance = y - start.y;
+    if (Math.abs(horizontalDistance) < 45 || Math.abs(horizontalDistance) < Math.abs(verticalDistance) * 1.2) {
+      return;
+    }
+    showRecipe(horizontalDistance < 0 ? 1 : -1);
+  };
 
   return (
     <>
@@ -388,41 +485,90 @@ function CartDashboard() {
         </div>
       </header>
 
-      <main className="dashboard">
+      <main className={`dashboard${isRecipeMode ? ' recipe-mode' : ''}`}>
+        <div className={`receipt-card budget-overview${isRecipeMode ? ' recipe-budget-overview' : ''}`}>
+          {budget > 0 ? (
+            <>
+              <div className="progress-header" style={{ color: isOverBudget ? '#e74c3c' : '#2c3e50' }}>
+                <span>Budget: ${budget.toFixed(2)}</span>
+                <span>{isOverBudget ? 'OVER BUDGET' : `${progressPercentage.toFixed(0)}%`}</span>
+              </div>
+              <div className="progress-container">
+                <div
+                  className={`progress-bar ${isOverBudget ? 'over-budget' : ''}`}
+                  style={{ width: `${progressPercentage}%` }}
+                ></div>
+              </div>
+            </>
+          ) : (
+            <div className="no-budget-message">No Budget Set</div>
+          )}
+        </div>
         <div className="catalog-panel">
-          <div className="catalog-items">
-            {(Object.keys(CATALOG) as ItemKey[]).map((key) => {
-              const item = CATALOG[key];
-              const qty = inventory[key] ?? 0;
-              const isPulsing = pulsingItem === key;
+          {isRecipeMode ? (
+            <section className="recipe-inventory" aria-labelledby="recipe-inventory-title">
+              <div className="recipe-inventory-heading">
+                <p className="recipe-eyebrow">Your ingredients</p>
+                <h2 id="recipe-inventory-title">In your cart</h2>
+              </div>
+              {Object.entries(inventory).some(([, quantity]) => quantity > 0) ? (
+                <ul className="recipe-inventory-list">
+                  {(Object.keys(CATALOG) as ItemKey[])
+                    .filter((key) => inventory[key] > 0)
+                    .map((key) => (
+                      <li className="recipe-inventory-item" key={key}>
+                        <span>{CATALOG[key].name}</span>
+                        <span className="recipe-inventory-quantity">× {inventory[key]}</span>
+                      </li>
+                    ))}
+                </ul>
+              ) : (
+                <p className="recipe-empty-state">
+                  Your cart is empty. Switch to Shopping Mode to add ingredients.
+                </p>
+              )}
+            </section>
+          ) : (
+            <>
+              <div className="catalog-items">
+                {(Object.keys(CATALOG) as ItemKey[]).map((key) => {
+                  const item = CATALOG[key];
+                  const qty = inventory[key] ?? 0;
+                  const isPulsing = pulsingItem === key;
 
-              return (
-                <div key={key} className={`catalog-row ${isPulsing ? 'pulse-anim' : ''}`}>
-                  <div className="catalog-info">
-                    <strong>{item.name}</strong>
-                    <div className="item-price">${item.price.toFixed(2)}</div>
-                  </div>
+                  return (
+                    <div key={key} className={`catalog-row ${isPulsing ? 'pulse-anim' : ''}`}>
+                      <div className="catalog-info">
+                        <strong>{item.name}</strong>
+                        <div className="item-price">${item.price.toFixed(2)}</div>
+                      </div>
 
-                  <div className="controls">
-                    <button className="touch-btn btn-minus" onClick={() => sendAction('MANUAL_REMOVE', key)}>–</button>
-                    <span className="item-quantity">{qty}</span>
-                    <button className="touch-btn btn-plus" onClick={() => sendAction('MANUAL_ADD', key)}>+</button>
-                  </div>
+                      <div className="controls">
+                        <button className="touch-btn btn-minus" onClick={() => sendAction('MANUAL_REMOVE', key)}>–</button>
+                        <span className="item-quantity">{qty}</span>
+                        <button className="touch-btn btn-plus" onClick={() => sendAction('MANUAL_ADD', key)}>+</button>
+                      </div>
 
-                  <div className="line-total">${(item.price * qty).toFixed(2)}</div>
+                      <div className="line-total">${(item.price * qty).toFixed(2)}</div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="catalog-summary">
+                <div className="summary-line"><span>Subtotal</span> <span>${currentSubtotal.toFixed(2)}</span></div>
+                <div className="summary-line"><span>Estimated Tax (7%)</span> <span>${currentTax.toFixed(2)}</span></div>
+                <div className="summary-line summary-total" style={{ color: isOverBudget ? '#e74c3c' : '#2c3e50' }}>
+                  <span>Total</span>
+                  <span>${currentTotal.toFixed(2)}</span>
                 </div>
-              );
-            })}
-          </div>
-
-          <div className="catalog-summary">
-            <div className="summary-line"><span>Subtotal</span> <span>${currentSubtotal.toFixed(2)}</span></div>
-            <div className="summary-line"><span>Estimated Tax (7%)</span> <span>${currentTax.toFixed(2)}</span></div>
-          </div>
+              </div>
+            </>
+          )}
         </div>
 
         <div className="receipt-panel">
-          <div className="nutrition-card">
+          {!isRecipeMode && <div className="nutrition-card">
             <h2 className="nutrition-title">Macro Goals</h2>
             <div className="macro-progress-layout">
               <svg
@@ -474,33 +620,117 @@ function CartDashboard() {
                   : 'Gathering updated macros for your cart. Existing totals stay visible until they are ready.'}
               </p>
             ) : null}
-          </div>
-          <div className="receipt-card">
-            {budget > 0 ? (
-              <>
-                <div className="progress-header" style={{ color: isOverBudget ? '#e74c3c' : '#2c3e50' }}>
-                  <span>Budget: ${budget.toFixed(2)}</span>
-                  <span>{isOverBudget ? 'OVER BUDGET' : `${progressPercentage.toFixed(0)}%`}</span>
-                </div>
-                <div className="progress-container">
-                  <div
-                    className={`progress-bar ${isOverBudget ? 'over-budget' : ''}`}
-                    style={{ width: `${progressPercentage}%` }}
-                  ></div>
-                </div>
-              </>
-            ) : (
-              <div style={{ color: '#7f8c8d', marginBottom: '1.5rem', fontWeight: 'bold', fontSize: '1.25rem' }}>No Budget Set</div>
-            )}
-
-            <div className="receipt-total" style={{ color: isOverBudget ? '#e74c3c' : '#2c3e50' }}>
-              <span>Total:</span>
-              <span>${currentTotal.toFixed(2)}</span>
+          </div>}
+          {!isRecipeMode && (
+            <button
+              className="mode-toggle-button shopping-mode-toggle"
+              type="button"
+              aria-pressed={false}
+              onClick={() => setIsRecipeMode(true)}
+            >
+              Recipe Mode
+            </button>
+          )}
+          {isRecipeMode && (
+            <button
+              className="mode-toggle-button recipe-mode-toggle"
+              type="button"
+              aria-pressed={true}
+              onClick={() => setIsRecipeMode(false)}
+            >
+              Shopping Mode
+            </button>
+          )}
+          {isRecipeMode && <section className="recipe-card" aria-labelledby="recipe-card-title">
+            <div className="recipe-card-heading">
+              <div>
+                <p className="recipe-eyebrow">Made for your cart</p>
+                <h2 className="nutrition-title" id="recipe-card-title">Recipe</h2>
+              </div>
             </div>
+            <label className="recipe-preference-label" htmlFor="recipe-preference">
+              What sounds good?
+            </label>
+            <input
+              className="recipe-preference-input"
+              id="recipe-preference"
+              type="text"
+              value={recipePreference}
+              onChange={(event) => setRecipePreference(event.target.value)}
+              placeholder="e.g. quick, vegetarian, high-protein"
+            />
 
-            <button className="checkout-btn" onClick={() => alert(`Checking out total: $${currentTotal.toFixed(2)}`)}>Checkout</button>
-          </div>
-
+            {selectedRecipe ? (
+              <div
+                className="recipe-swipe-area is-swipe-enabled"
+                role="region"
+                aria-label="Swipeable recipe suggestions"
+                aria-live="polite"
+                tabIndex={0}
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowRight') showRecipe(1);
+                  if (event.key === 'ArrowLeft') showRecipe(-1);
+                }}
+                onPointerDown={(event) => {
+                  if (event.pointerType === 'touch') return;
+                  event.currentTarget.setPointerCapture(event.pointerId);
+                  recipeSwipeStartRef.current = { x: event.clientX, y: event.clientY };
+                }}
+                onPointerUp={(event) => {
+                  if (event.pointerType === 'touch') return;
+                  handleRecipeSwipe(event.clientX, event.clientY);
+                }}
+                onPointerCancel={(event) => {
+                  if (event.pointerType !== 'touch') recipeSwipeStartRef.current = null;
+                }}
+                onTouchStart={(event) => {
+                  const touch = event.touches[0];
+                  if (touch) recipeSwipeStartRef.current = { x: touch.clientX, y: touch.clientY };
+                }}
+                onTouchEnd={(event) => {
+                  const touch = event.changedTouches[0];
+                  if (touch) handleRecipeSwipe(touch.clientX, touch.clientY);
+                }}
+                onTouchCancel={() => {
+                  recipeSwipeStartRef.current = null;
+                }}
+              >
+                <article className="recipe-featured recipe-featured-large" key={selectedRecipe.title}>
+                  <div className="recipe-featured-topline">
+                    <span className="recipe-badge">{selectedRecipe.badge}</span>
+                    <span className="recipe-time">⏱ {selectedRecipe.time}</span>
+                  </div>
+                  <p className="recipe-eyebrow">A little inspiration</p>
+                  <h3>{selectedRecipe.title}</h3>
+                  <p className="recipe-featured-description">{selectedRecipe.description}</p>
+                  <div className="recipe-ingredients">
+                    {selectedRecipe.ingredients.map((item) => (
+                      <span className="recipe-ingredient" key={item}>
+                        {CATALOG[item].name}
+                      </span>
+                    ))}
+                  </div>
+                  <div className="recipe-directions">
+                    <h4>Quick steps</h4>
+                    <ol>
+                      {selectedRecipe.steps.map((step) => <li key={step}>{step}</li>)}
+                    </ol>
+                  </div>
+                </article>
+              </div>
+            ) : (
+              <p className="recipe-empty-state">
+                Add apples, bananas, beans, or donuts in Shopping Mode to discover ideas for your cart.
+              </p>
+            )}
+            {availableRecipes.length > 1 && (
+              <div className="recipe-navigation" aria-label="Recipe navigation">
+                <button type="button" onClick={() => showRecipe(-1)} aria-label="Previous recipe">←</button>
+                <span>{selectedRecipeIndex + 1} / {availableRecipes.length}</span>
+                <button type="button" onClick={() => showRecipe(1)} aria-label="Next recipe">→</button>
+              </div>
+            )}
+          </section>}
         </div>
       </main>
     </>
