@@ -2,7 +2,7 @@ import json
 import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional, Union
 
 
 class Brain:
@@ -15,7 +15,7 @@ class Brain:
         "water": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
     }
 
-    def __init__(self, file_path: str | Path = "brain.json"):
+    def __init__(self, file_path: Union[str, Path] = "brain.json"):
         self.file_path = Path(file_path)
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -180,7 +180,7 @@ class Brain:
         self.save()
         return pending
 
-    def set_last_ai_run(self, timestamp: float | None = None) -> float:
+    def set_last_ai_run(self, timestamp: Optional[float] = None) -> float:
         self.data["last_ai_run"] = float(timestamp if timestamp is not None else time.time())
         self.save()
         return self.data["last_ai_run"]
