@@ -5,12 +5,16 @@ import './App.css';
 const CATALOG = {
   apples: { id: 'apples', name: '🍎 Apples', price: 1.29 },
   bananas: { id: 'bananas', name: '🍌 Bananas', price: 0.59 },
+  beans: { id: 'beans', name: '🫘 Beans', price: 1.29 },
+  donuts: { id: 'donuts', name: '🍩 Donuts', price: 1.25 },
   'water bottle': { id: 'water bottle', name: '💦 Water Bottle', price: 1.99 },
 } as const;
 
 type ItemKey = keyof typeof CATALOG;
+type MacroKey = 'protein' | 'carbs' | 'fat';
 
 type MacroProgress = {
+  key: MacroKey;
   name: string;
   current: number;
   goal: number;
@@ -19,10 +23,12 @@ type MacroProgress = {
 };
 
 const DEFAULT_MACRO_GOALS: MacroProgress[] = [
-  { name: 'Protein', current: 0, goal: 120, color: '#f5c542', radius: 108 },
-  { name: 'Carbs', current: 0, goal: 250, color: '#42bda0', radius: 81 },
-  { name: 'Fat', current: 0, goal: 65, color: '#ed8068', radius: 54 },
+  { key: 'protein', name: 'Protein', current: 0, goal: 120, color: '#f5c542', radius: 108 },
+  { key: 'carbs', name: 'Carbs', current: 0, goal: 250, color: '#42bda0', radius: 81 },
+  { key: 'fat', name: 'Fat', current: 0, goal: 65, color: '#ed8068', radius: 54 },
 ];
+
+const DEFAULT_GOALS: Record<MacroKey, number> = { protein: 120, carbs: 250, fat: 65 };
 
 const fetchJson = async (url: string, options?: RequestInit) => {
   console.log(`[frontend] fetch ${url} ${options ? 'with payload' : 'without payload'}`);
@@ -35,26 +41,26 @@ const fetchJson = async (url: string, options?: RequestInit) => {
 };
 
 const buildInventoryFromStore = (foods: Record<string, number> = {}) => {
-  const base = { apples: 0, bananas: 0, 'water bottle': 0 } as Record<ItemKey, number>;
+  const base = { apples: 0, bananas: 0, beans: 0, donuts: 0, 'water bottle': 0 } as Record<ItemKey, number>;
   for (const key of Object.keys(base) as ItemKey[]) {
     base[key] = Number(foods[key] ?? 0);
   }
   return base;
 };
 
-const normalizeMacroProgress = (payload: any): MacroProgress[] => {
+const normalizeMacroProgress = (payload: any, goals: Record<MacroKey, number>): MacroProgress[] => {
   const totals = payload?.totals ?? { carbs: 0, protein: 0, fat: 0 };
   const order = [
-    { name: 'Protein', key: 'protein', color: '#f5c542', radius: 108 },
-    { name: 'Carbs', key: 'carbs', color: '#42bda0', radius: 81 },
-    { name: 'Fat', key: 'fat', color: '#ed8068', radius: 54 },
+    { name: 'Protein', key: 'protein' as const, color: '#f5c542', radius: 108 },
+    { name: 'Carbs', key: 'carbs' as const, color: '#42bda0', radius: 81 },
+    { name: 'Fat', key: 'fat' as const, color: '#ed8068', radius: 54 },
   ];
 
-  const goals = { protein: 120, carbs: 250, fat: 65 };
   return order.map((macro) => ({
+    key: macro.key,
     name: macro.name,
     current: Number(totals[macro.key] ?? 0),
-    goal: goals[macro.key as keyof typeof goals],
+    goal: goals[macro.key],
     color: macro.color,
     radius: macro.radius,
   }));
@@ -116,9 +122,27 @@ function BudgetPage() {
 function CartDashboard() {
   const location = useLocation();
   const [budget, setBudget] = useState<number>(Number(location.state?.budget ?? 0));
-  const [inventory, setInventory] = useState<Record<ItemKey, number>>({ apples: 0, bananas: 0, 'water bottle': 0 });
+  const [budgetInput, setBudgetInput] = useState(String(Number(location.state?.budget ?? 0)));
+  const [inventory, setInventory] = useState<Record<ItemKey, number>>({
+    apples: 0,
+    bananas: 0,
+    beans: 0,
+    donuts: 0,
+    'water bottle': 0,
+  });
   const [macroProgress, setMacroProgress] = useState<MacroProgress[]>(DEFAULT_MACRO_GOALS);
-  const [wsStatus, setWsStatus] = useState<'connected' | 'offline' | 'reconnecting'>('offline');
+  const [macroGoalInputs, setMacroGoalInputs] = useState<Record<MacroKey, string>>({
+    protein: String(DEFAULT_GOALS.protein),
+    carbs: String(DEFAULT_GOALS.carbs),
+    fat: String(DEFAULT_GOALS.fat),
+  });
+  const [isPageSettingsOpen, setIsPageSettingsOpen] = useState(false);
+  const macroGoals: Record<MacroKey, number> = {
+    protein: macroProgress.find((macro) => macro.key === 'protein')?.goal ?? DEFAULT_GOALS.protein,
+    carbs: macroProgress.find((macro) => macro.key === 'carbs')?.goal ?? DEFAULT_GOALS.carbs,
+    fat: macroProgress.find((macro) => macro.key === 'fat')?.goal ?? DEFAULT_GOALS.fat,
+  };
+  const [settingsError, setSettingsError] = useState('');
   const [pulsingItem, setPulsingItem] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -132,7 +156,7 @@ function CartDashboard() {
         console.log('[frontend] macro payload:', payload);
 
         if (payload?.status === 'ready') {
-          setMacroProgress(normalizeMacroProgress(payload));
+          setMacroProgress(normalizeMacroProgress(payload, macroGoals));
           return;
         }
       } catch (error) {
@@ -153,7 +177,9 @@ function CartDashboard() {
       const foodStore = brainData?.foods ?? {};
       console.log('[frontend] received brain data', brainData);
       setInventory(buildInventoryFromStore(foodStore));
-      setBudget(Number(brainData?.budget ?? 0));
+      const loadedBudget = Number(brainData?.budget ?? 0);
+      setBudget(loadedBudget);
+      setBudgetInput(String(loadedBudget));
     } catch (error) {
       console.error('[frontend] could not load brain data', error);
     }
@@ -228,6 +254,38 @@ function CartDashboard() {
     await refreshBrainData();
   };
 
+  const saveSettings = async () => {
+    const nextBudget = Number(budgetInput);
+    const nextGoals = {
+      protein: Number(macroGoalInputs.protein),
+      carbs: Number(macroGoalInputs.carbs),
+      fat: Number(macroGoalInputs.fat),
+    };
+    if (!Number.isFinite(nextBudget) || nextBudget < 0
+      || Object.values(nextGoals).some((goal) => !Number.isFinite(goal) || goal <= 0)) {
+      setSettingsError('Enter a valid budget and positive macro goals before saving.');
+      return;
+    }
+
+    try {
+      await fetchJson('/api/brain/budget', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ budget: nextBudget }),
+      });
+      setBudget(nextBudget);
+      setMacroProgress((current) => current.map((macro) => ({
+        ...macro,
+        goal: nextGoals[macro.key],
+      })));
+      setSettingsError('');
+      setIsPageSettingsOpen(false);
+    } catch (error) {
+      console.error('[frontend] could not save updated budget', error);
+      setSettingsError('Could not save settings. Please try again.');
+    }
+  };
+
   const currentSubtotal = (Object.keys(CATALOG) as ItemKey[]).reduce((acc, key) => {
     const qty = inventory[key] ?? 0;
     return acc + CATALOG[key].price * qty;
@@ -241,7 +299,69 @@ function CartDashboard() {
     <>
       <header className="top-header">
         <div><strong>Budget Buddies</strong></div>
-        <button className="reset-btn" onClick={() => sendAction('RESET')}>Reset Cart</button>
+        <div className="header-actions">
+          <button className="reset-btn" onClick={() => sendAction('RESET')}>Reset Cart</button>
+          <button
+            className="page-settings-button"
+            type="button"
+            aria-label="Page settings"
+            aria-expanded={isPageSettingsOpen}
+            aria-controls="page-settings"
+            onClick={() => setIsPageSettingsOpen((isOpen) => !isOpen)}
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path d="M4 7h9M17 7h3M4 17h3M11 17h9" />
+              <circle cx="15" cy="7" r="2" />
+              <circle cx="9" cy="17" r="2" />
+            </svg>
+          </button>
+          {isPageSettingsOpen && (
+            <div className="page-settings-panel" id="page-settings" aria-label="Page settings">
+              <h2>Settings</h2>
+              <label className="macro-goal-field">
+                <span>Budget</span>
+                <span className="macro-goal-input-wrap">
+                  <span>$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={budgetInput}
+                    onChange={(event) => setBudgetInput(event.target.value)}
+                    aria-label="Shopping budget"
+                  />
+                </span>
+              </label>
+              <div className="settings-divider" />
+              <h3>Daily macro goals</h3>
+              {macroProgress.map((macro) => (
+                <label className="macro-goal-field" key={macro.key}>
+                  <span>{macro.name}</span>
+                  <span className="macro-goal-input-wrap">
+                    <input
+                      type="number"
+                      min="1"
+                      step="1"
+                      value={macroGoalInputs[macro.key]}
+                      onChange={(event) => {
+                        setMacroGoalInputs((current) => ({ ...current, [macro.key]: event.target.value }));
+                      }}
+                      onBlur={() => {
+                        if (!macroGoalInputs[macro.key] || Number(macroGoalInputs[macro.key]) <= 0) {
+                          setMacroGoalInputs((current) => ({ ...current, [macro.key]: String(macro.goal) }));
+                        }
+                      }}
+                      aria-label={`${macro.name} daily goal in grams`}
+                    />
+                    <span>g</span>
+                  </span>
+                </label>
+              ))}
+              {settingsError && <p className="settings-error" role="alert">{settingsError}</p>}
+              <button className="settings-save-button" type="button" onClick={saveSettings}>Save changes</button>
+            </div>
+          )}
+        </div>
       </header>
 
       <main className="dashboard">
@@ -278,32 +398,6 @@ function CartDashboard() {
         </div>
 
         <div className="receipt-panel">
-          <div className="receipt-card">
-            {budget > 0 ? (
-              <>
-                <div className="progress-header" style={{ color: isOverBudget ? '#e74c3c' : '#2c3e50' }}>
-                  <span>Budget: ${budget.toFixed(2)}</span>
-                  <span>{isOverBudget ? 'OVER BUDGET' : `${progressPercentage.toFixed(0)}%`}</span>
-                </div>
-                <div className="progress-container">
-                  <div
-                    className={`progress-bar ${isOverBudget ? 'over-budget' : ''}`}
-                    style={{ width: `${progressPercentage}%` }}
-                  ></div>
-                </div>
-              </>
-            ) : (
-              <div style={{ color: '#7f8c8d', marginBottom: '1.5rem', fontWeight: 'bold', fontSize: '1.25rem' }}>No Budget Set</div>
-            )}
-
-            <div className="receipt-total" style={{ color: isOverBudget ? '#e74c3c' : '#2c3e50' }}>
-              <span>Total:</span>
-              <span>${currentTotal.toFixed(2)}</span>
-            </div>
-
-            <button className="checkout-btn" onClick={() => alert(`Checking out total: $${currentTotal.toFixed(2)}`)}>Checkout</button>
-          </div>
-
           <div className="nutrition-card">
             <h2 className="nutrition-title">Macro Goals</h2>
             {macroProgress.some((macro) => macro.current > 0) ? (
@@ -320,13 +414,7 @@ function CartDashboard() {
 
                     return (
                       <g key={macro.name} transform="rotate(-90 130 130)">
-                        <circle
-                          cx="130"
-                          cy="130"
-                          r={macro.radius}
-                          className="macro-ring-track"
-                          stroke={macro.color}
-                        />
+                        <circle cx="130" cy="130" r={macro.radius} className="macro-ring-track" stroke={macro.color} />
                         <circle
                           cx="130"
                           cy="130"
@@ -356,6 +444,32 @@ function CartDashboard() {
               <p style={{ color: '#7f8c8d' }}>Loading macro totals…</p>
             )}
           </div>
+          <div className="receipt-card">
+            {budget > 0 ? (
+              <>
+                <div className="progress-header" style={{ color: isOverBudget ? '#e74c3c' : '#2c3e50' }}>
+                  <span>Budget: ${budget.toFixed(2)}</span>
+                  <span>{isOverBudget ? 'OVER BUDGET' : `${progressPercentage.toFixed(0)}%`}</span>
+                </div>
+                <div className="progress-container">
+                  <div
+                    className={`progress-bar ${isOverBudget ? 'over-budget' : ''}`}
+                    style={{ width: `${progressPercentage}%` }}
+                  ></div>
+                </div>
+              </>
+            ) : (
+              <div style={{ color: '#7f8c8d', marginBottom: '1.5rem', fontWeight: 'bold', fontSize: '1.25rem' }}>No Budget Set</div>
+            )}
+
+            <div className="receipt-total" style={{ color: isOverBudget ? '#e74c3c' : '#2c3e50' }}>
+              <span>Total:</span>
+              <span>${currentTotal.toFixed(2)}</span>
+            </div>
+
+            <button className="checkout-btn" onClick={() => alert(`Checking out total: $${currentTotal.toFixed(2)}`)}>Checkout</button>
+          </div>
+
         </div>
       </main>
     </>
