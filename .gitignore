@@ -6,3 +6,4 @@ __pycache__/
 *.onnx
 *.log
 cam_*_test.jpg
+.env
