@@ -133,6 +133,7 @@ function CartDashboard() {
   const [macroProgress, setMacroProgress] = useState<MacroProgress[]>(DEFAULT_MACRO_GOALS);
   const [macroLoadStatus, setMacroLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [macroLoadError, setMacroLoadError] = useState('');
+  const [pendingMacroItems, setPendingMacroItems] = useState<string[]>([]);
   const [macroGoalInputs, setMacroGoalInputs] = useState<Record<MacroKey, string>>({
     protein: String(DEFAULT_GOALS.protein),
     carbs: String(DEFAULT_GOALS.carbs),
@@ -164,12 +165,17 @@ function CartDashboard() {
 
           if (payload?.status === 'ready') {
             setMacroProgress(normalizeMacroProgress(payload, macroGoals));
+            setPendingMacroItems([]);
             setMacroLoadStatus('ready');
             return;
           }
+          if (payload?.status === 'pending') {
+            setPendingMacroItems(payload.pending_items ?? []);
+          }
           if (payload?.status === 'error') {
-            setMacroLoadStatus('error');
+            setPendingMacroItems(payload.pending_items ?? []);
             setMacroLoadError(payload.error || 'Could not load macros from Gemini.');
+            setMacroLoadStatus('error');
             return;
           }
         } catch (error) {
@@ -418,53 +424,56 @@ function CartDashboard() {
         <div className="receipt-panel">
           <div className="nutrition-card">
             <h2 className="nutrition-title">Macro Goals</h2>
-            {macroLoadStatus === 'error' ? (
-              <p className="macro-load-error" role="alert">{macroLoadError}</p>
-            ) : macroLoadStatus === 'ready' ? (
-              <div className="macro-progress-layout">
-                <svg
-                  className="macro-rings"
-                  viewBox="0 0 260 260"
-                  role="img"
-                  aria-label={`Macro progress: ${macroProgress.map((macro) => `${macro.name} ${macro.current} of ${macro.goal} grams`).join(', ')}.`}
-                >
-                  {macroProgress.map((macro) => {
-                    const circumference = 2 * Math.PI * macro.radius;
-                    const progress = Math.min(macro.current / macro.goal, 1);
+            <div className="macro-progress-layout">
+              <svg
+                className="macro-rings"
+                viewBox="0 0 260 260"
+                role="img"
+                aria-label={`Macro progress: ${macroProgress.map((macro) => `${macro.name} ${macro.current} of ${macro.goal} grams`).join(', ')}.`}
+              >
+                {macroProgress.map((macro) => {
+                  const circumference = 2 * Math.PI * macro.radius;
+                  const progress = Math.min(macro.current / macro.goal, 1);
 
-                    return (
-                      <g key={macro.name} transform="rotate(-90 130 130)">
-                        <circle cx="130" cy="130" r={macro.radius} className="macro-ring-track" stroke={macro.color} />
-                        <circle
-                          cx="130"
-                          cy="130"
-                          r={macro.radius}
-                          className="macro-ring-progress"
-                          stroke={macro.color}
-                          strokeDasharray={circumference}
-                          strokeDashoffset={circumference * (1 - progress)}
-                        />
-                      </g>
-                    );
-                  })}
-                </svg>
-                <ul className="macro-progress-list">
-                  {macroProgress.map((macro) => (
-                    <li key={macro.name} className="macro-progress-item">
-                      <span className="macro-progress-name">
-                        <span className="macro-progress-swatch" style={{ backgroundColor: macro.color }} />
-                        {macro.name}
-                      </span>
-                      <strong>{macro.current}/{macro.goal} g</strong>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            ) : (
-              <p className="macro-load-message">
-                Looking up nutrition for your cart. Foods added during a lookup are checked in the next batch.
+                  return (
+                    <g key={macro.name} transform="rotate(-90 130 130)">
+                      <circle cx="130" cy="130" r={macro.radius} className="macro-ring-track" stroke={macro.color} />
+                      <circle
+                        cx="130"
+                        cy="130"
+                        r={macro.radius}
+                        className="macro-ring-progress"
+                        stroke={macro.color}
+                        strokeDasharray={circumference}
+                        strokeDashoffset={circumference * (1 - progress)}
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+              <ul className="macro-progress-list">
+                {macroProgress.map((macro) => (
+                  <li key={macro.name} className="macro-progress-item">
+                    <span className="macro-progress-name">
+                      <span className="macro-progress-swatch" style={{ backgroundColor: macro.color }} />
+                      {macro.name}
+                    </span>
+                    <strong>{macro.current}/{macro.goal} g</strong>
+                  </li>
+                ))}
+              </ul>
+            </div>
+            {macroLoadStatus === 'error' ? (
+              <p className="macro-load-error" role="alert">
+                {macroLoadError} Existing macro totals are still shown.
               </p>
-            )}
+            ) : macroLoadStatus === 'loading' ? (
+              <p className="macro-load-message" role="status">
+                {pendingMacroItems.length > 0
+                  ? `Gathering new macros for ${pendingMacroItems.join(', ')}. Existing totals stay visible until they are ready.`
+                  : 'Gathering updated macros for your cart. Existing totals stay visible until they are ready.'}
+              </p>
+            ) : null}
           </div>
           <div className="receipt-card">
             {budget > 0 ? (
