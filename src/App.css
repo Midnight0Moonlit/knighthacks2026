@@ -306,6 +306,13 @@ body {
   padding-left: 1.3rem;
   font-size: 1.1rem;
 }
+.macro-load-message,
+.macro-load-error {
+  text-align: center;
+  font-size: 0.95rem;
+}
+.macro-load-message { color: #7f8c8d; }
+.macro-load-error { color: #b42332; }
 /* WebSocket Status */
 .status-badge { display: flex; align-items: center; gap: 0.5rem; }
 .dot { width: 12px; height: 12px; border-radius: 50%; }

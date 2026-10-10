@@ -131,6 +131,8 @@ function CartDashboard() {
     'water bottle': 0,
   });
   const [macroProgress, setMacroProgress] = useState<MacroProgress[]>(DEFAULT_MACRO_GOALS);
+  const [macroLoadStatus, setMacroLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
+  const [macroLoadError, setMacroLoadError] = useState('');
   const [macroGoalInputs, setMacroGoalInputs] = useState<Record<MacroKey, string>>({
     protein: String(DEFAULT_GOALS.protein),
     carbs: String(DEFAULT_GOALS.carbs),
@@ -145,30 +147,40 @@ function CartDashboard() {
   const [settingsError, setSettingsError] = useState('');
   const [pulsingItem, setPulsingItem] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const macroPollingRef = useRef(false);
 
   const loadMacrosAsync = async () => {
+    if (macroPollingRef.current) return;
+    macroPollingRef.current = true;
     console.log('[frontend] requesting macro totals from backend');
-    let attempts = 0;
+    setMacroLoadStatus('loading');
+    setMacroLoadError('');
 
-    while (attempts < 25) {
-      try {
-        const payload = await fetchJson('/api/macros');
-        console.log('[frontend] macro payload:', payload);
+    try {
+      while (true) {
+        try {
+          const payload = await fetchJson('/api/macros');
+          console.log('[frontend] macro payload:', payload);
 
-        if (payload?.status === 'ready') {
-          setMacroProgress(normalizeMacroProgress(payload, macroGoals));
-          return;
+          if (payload?.status === 'ready') {
+            setMacroProgress(normalizeMacroProgress(payload, macroGoals));
+            setMacroLoadStatus('ready');
+            return;
+          }
+          if (payload?.status === 'error') {
+            setMacroLoadStatus('error');
+            setMacroLoadError(payload.error || 'Could not load macros from Gemini.');
+            return;
+          }
+        } catch (error) {
+          console.error('[frontend] macro fetch failed; retrying', error);
         }
-      } catch (error) {
-        console.error('[frontend] macro fetch failed, retrying', error);
+
+        await new Promise((resolve) => setTimeout(resolve, 2000));
       }
-
-      attempts += 1;
-      await new Promise((resolve) => setTimeout(resolve, 1000));
+    } finally {
+      macroPollingRef.current = false;
     }
-
-    console.log('[frontend] macro request timed out; showing zeros');
-    setMacroProgress(DEFAULT_MACRO_GOALS);
   };
 
   const refreshBrainData = async () => {
@@ -184,7 +196,9 @@ function CartDashboard() {
       console.error('[frontend] could not load brain data', error);
     }
 
-    await loadMacrosAsync();
+    void loadMacrosAsync().catch((error) => {
+      console.error('[frontend] macro polling failed', error);
+    });
   };
 
   const connectWebSocket = () => {
@@ -212,8 +226,12 @@ function CartDashboard() {
 
   useEffect(() => {
     console.log('[frontend] CartDashboard mounted');
-    refreshBrainData().catch((error) => {
-      console.error('[frontend] refreshBrainData crashed', error);
+    fetchJson('/api/cart/entered', { method: 'POST' })
+      .then(() => refreshBrainData())
+      .catch((error) => {
+        console.error('[frontend] could not register cart entry', error);
+        setMacroLoadStatus('error');
+        setMacroLoadError('Could not start nutrition lookups. Please reload the cart.');
     });
     connectWebSocket();
     return () => wsRef.current?.close();
@@ -400,7 +418,9 @@ function CartDashboard() {
         <div className="receipt-panel">
           <div className="nutrition-card">
             <h2 className="nutrition-title">Macro Goals</h2>
-            {macroProgress.some((macro) => macro.current > 0) ? (
+            {macroLoadStatus === 'error' ? (
+              <p className="macro-load-error" role="alert">{macroLoadError}</p>
+            ) : macroLoadStatus === 'ready' ? (
               <div className="macro-progress-layout">
                 <svg
                   className="macro-rings"
@@ -441,7 +461,9 @@ function CartDashboard() {
                 </ul>
               </div>
             ) : (
-              <p style={{ color: '#7f8c8d' }}>Loading macro totals…</p>
+              <p className="macro-load-message">
+                Looking up nutrition for your cart. Foods added during a lookup are checked in the next batch.
+              </p>
             )}
           </div>
           <div className="receipt-card">

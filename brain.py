@@ -1,5 +1,6 @@
 import json
 import re
+import threading
 import time
 from pathlib import Path
 from typing import Any, Optional, Union
@@ -8,14 +9,14 @@ from typing import Any, Optional, Union
 class Brain:
     """Local storage for foods, budget, and cached macro data for each item."""
 
-    DEFAULT_NUTRITION = {
-        "apples": {"carbs": 25.0, "protein": 0.5, "fat": 0.3},
-        "bananas": {"carbs": 27.0, "protein": 1.3, "fat": 0.3},
+    LEGACY_SEEDED_NUTRITION = {
+        "apples": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
+        "bananas": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
         "water bottle": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
-        "water": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
     }
 
     def __init__(self, file_path: Union[str, Path] = "brain.json"):
+        self._lock = threading.RLock()
         self.file_path = Path(file_path)
         self.file_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -25,9 +26,10 @@ class Brain:
                     {
                         "foods": {},
                         "budget": 0,
-                        "nutrition": self.DEFAULT_NUTRITION,
+                        "nutrition": {},
                         "last_ai_run": 0,
                         "pending_items": [],
+                        "nutrition_migration_version": 0,
                     },
                     indent=2,
                     ensure_ascii=False,
@@ -37,7 +39,11 @@ class Brain:
             )
 
         self.data = self._load()
-        self._seed_known_nutrition()
+        self._migrate_legacy_nutrition()
+        self.data["pending_items"] = []
+        for item_name, quantity in self.data["foods"].items():
+            if quantity > 0:
+                self._queue_missing_nutrition(item_name)
         self.save()
 
     def _load(self) -> dict[str, Any]:
@@ -51,6 +57,7 @@ class Brain:
                 "nutrition": {},
                 "last_ai_run": 0,
                 "pending_items": [],
+                "nutrition_migration_version": 0,
             }
 
         if not isinstance(loaded, dict):
@@ -60,6 +67,7 @@ class Brain:
                 "nutrition": {},
                 "last_ai_run": 0,
                 "pending_items": [],
+                "nutrition_migration_version": 0,
             }
 
         foods = loaded.get("foods", {})
@@ -90,182 +98,229 @@ class Brain:
             "nutrition": normalized_nutrition,
             "last_ai_run": float(loaded.get("last_ai_run", 0)),
             "pending_items": [self._normalize_name(item) for item in pending_items if str(item).strip()],
+            "nutrition_migration_version": int(loaded.get("nutrition_migration_version", 0)),
         }
 
-    def _seed_known_nutrition(self) -> None:
-        self.data.setdefault("nutrition", {})
-        for item_name, macros in self.DEFAULT_NUTRITION.items():
+    def _migrate_legacy_nutrition(self) -> None:
+        if self.data.get("nutrition_migration_version", 0) >= 2:
+            return
+
+        nutrition = self.data.setdefault("nutrition", {})
+        for item_name, macros in self.LEGACY_SEEDED_NUTRITION.items():
             normalized = self._normalize_name(item_name)
-            self.data["nutrition"].setdefault(
-                normalized,
-                {
-                    "carbs": float(macros.get("carbs", 0.0) or 0.0),
-                    "protein": float(macros.get("protein", 0.0) or 0.0),
-                    "fat": float(macros.get("fat", 0.0) or 0.0),
-                },
-            )
+            if normalized not in {"water", "water bottle", "water bottles"} and nutrition.get(normalized) == macros:
+                del nutrition[normalized]
+
+        for item_name in self.data.get("pending_items", []):
+            macros = nutrition.get(item_name)
+            if macros and all(float(macros.get(key, 0.0) or 0.0) == 0.0 for key in ("carbs", "protein", "fat")):
+                del nutrition[item_name]
+
+        for item_name, macros in list(nutrition.items()):
+            is_water = item_name in {"water", "water bottle", "water bottles"}
+            is_empty = all(float(macros.get(key, 0.0) or 0.0) == 0.0 for key in ("carbs", "protein", "fat"))
+            if is_empty and not is_water:
+                del nutrition[item_name]
+
+        self.data["nutrition_migration_version"] = 2
 
     def save(self) -> None:
-        with self.file_path.open("w", encoding="utf-8") as f:
-            json.dump(self.data, f, indent=2, ensure_ascii=False)
+        with self._lock:
+            with self.file_path.open("w", encoding="utf-8") as f:
+                json.dump(self.data, f, indent=2, ensure_ascii=False)
 
     def set_items(self, foods: dict[str, int]) -> dict[str, int]:
-        self.data["foods"] = {
-            self._normalize_name(name): max(int(quantity), 0)
-            for name, quantity in (foods or {}).items()
-        }
-        self.save()
-        return self.get_store()
+        with self._lock:
+            self.data["foods"] = {
+                self._normalize_name(name): max(int(quantity), 0)
+                for name, quantity in (foods or {}).items()
+            }
+            self.data["pending_items"] = [
+                item
+                for item in self.data.get("pending_items", [])
+                if self.data["foods"].get(item, 0) > 0 and item not in self.data.get("nutrition", {})
+            ]
+            for item_name, quantity in self.data["foods"].items():
+                if quantity > 0:
+                    self._queue_missing_nutrition(item_name)
+                else:
+                    self._remove_pending_item(item_name)
+            self.save()
+            return self.get_store()
 
     def set_item(self, item_name: str, quantity: int) -> dict[str, int]:
-        name = self._normalize_name(item_name)
-        if not name:
-            raise ValueError("Item name cannot be empty.")
+        with self._lock:
+            name = self._normalize_name(item_name)
+            if not name:
+                raise ValueError("Item name cannot be empty.")
 
-        self.data["foods"][name] = max(int(quantity), 0)
-        self._queue_missing_nutrition(name)
-        self.save()
-        return self.get_store()
+            self.data["foods"][name] = max(int(quantity), 0)
+            self._queue_missing_nutrition(name)
+            self.save()
+            return self.get_store()
 
     def add_item(self, item_name: str, quantity: int = 1) -> dict[str, int]:
-        name = self._normalize_name(item_name)
-        if not name:
-            raise ValueError("Item name cannot be empty.")
+        with self._lock:
+            name = self._normalize_name(item_name)
+            if not name:
+                raise ValueError("Item name cannot be empty.")
 
-        current = int(self.data["foods"].get(name, 0))
-        self.data["foods"][name] = max(current + int(quantity), 0)
-        self._queue_missing_nutrition(name)
-        self.save()
-        return self.get_store()
+            current = int(self.data["foods"].get(name, 0))
+            self.data["foods"][name] = max(current + int(quantity), 0)
+            self._queue_missing_nutrition(name)
+            self.save()
+            return self.get_store()
 
     def update_item_count(self, item_name: str, change: int) -> dict[str, int]:
-        name = self._normalize_name(item_name)
-        if not name:
-            raise ValueError("Item name cannot be empty.")
+        with self._lock:
+            name = self._normalize_name(item_name)
+            if not name:
+                raise ValueError("Item name cannot be empty.")
 
-        current = int(self.data["foods"].get(name, 0))
-        self.data["foods"][name] = max(current + int(change), 0)
-        self._queue_missing_nutrition(name)
-        self.save()
-        return self.get_store()
+            current = int(self.data["foods"].get(name, 0))
+            self.data["foods"][name] = max(current + int(change), 0)
+            self._queue_missing_nutrition(name)
+            self.save()
+            return self.get_store()
 
     def remove_item(self, item_name: str) -> dict[str, int]:
-        name = self._normalize_name(item_name)
-        self.data["foods"].pop(name, None)
-        self.data["nutrition"].pop(name, None)
-        pending = self.data.get("pending_items", [])
-        self.data["pending_items"] = [item for item in pending if item != name]
-        self.save()
-        return self.get_store()
+        with self._lock:
+            name = self._normalize_name(item_name)
+            self.data["foods"].pop(name, None)
+            self.data["nutrition"].pop(name, None)
+            pending = self.data.get("pending_items", [])
+            self.data["pending_items"] = [item for item in pending if item != name]
+            self.save()
+            return self.get_store()
 
     def _queue_missing_nutrition(self, item_name: str) -> None:
         name = self._normalize_name(item_name)
         if not name:
             return
 
-        nutrition = self.data.setdefault("nutrition", {})
-        if name not in nutrition:
-            nutrition[name] = {"carbs": 0.0, "protein": 0.0, "fat": 0.0}
-
+        quantity = self.data.get("foods", {}).get(name, 0)
+        if quantity < 1 or name in self.data.get("nutrition", {}):
+            self._remove_pending_item(name)
+            return
         pending = self.data.setdefault("pending_items", [])
         if name not in pending:
             pending.append(name)
 
+    def _remove_pending_item(self, item_name: str) -> None:
+        name = self._normalize_name(item_name)
+        pending = self.data.setdefault("pending_items", [])
+        self.data["pending_items"] = [item for item in pending if item != name]
+
     def get_pending_items(self) -> list[str]:
-        return list(self.data.get("pending_items", []))
+        with self._lock:
+            return list(self.data.get("pending_items", []))
 
     def consume_pending_items(self) -> list[str]:
-        pending = self.get_pending_items()
-        self.data["pending_items"] = []
-        self.save()
-        return pending
+        with self._lock:
+            pending = self.get_pending_items()
+            self.data["pending_items"] = []
+            self.save()
+            return pending
 
     def set_last_ai_run(self, timestamp: Optional[float] = None) -> float:
-        self.data["last_ai_run"] = float(timestamp if timestamp is not None else time.time())
-        self.save()
-        return self.data["last_ai_run"]
+        with self._lock:
+            self.data["last_ai_run"] = float(timestamp if timestamp is not None else time.time())
+            self.save()
+            return self.data["last_ai_run"]
 
     def get_last_ai_run(self) -> float:
-        return float(self.data.get("last_ai_run", 0))
+        with self._lock:
+            return float(self.data.get("last_ai_run", 0))
 
     def get_nutrition_store(self) -> dict[str, dict[str, float]]:
-        return {
-            item_name: {
+        with self._lock:
+            return {
+                item_name: {
+                    "carbs": float(macros.get("carbs", 0.0) or 0.0),
+                    "protein": float(macros.get("protein", 0.0) or 0.0),
+                    "fat": float(macros.get("fat", 0.0) or 0.0),
+                }
+                for item_name, macros in self.data.get("nutrition", {}).items()
+            }
+
+    def set_item_nutrition(self, item_name: str, macros: dict[str, float]) -> dict[str, float]:
+        with self._lock:
+            name = self._normalize_name(item_name)
+            self.data.setdefault("nutrition", {})
+            self.data["nutrition"][name] = {
                 "carbs": float(macros.get("carbs", 0.0) or 0.0),
                 "protein": float(macros.get("protein", 0.0) or 0.0),
                 "fat": float(macros.get("fat", 0.0) or 0.0),
             }
-            for item_name, macros in self.data.get("nutrition", {}).items()
-        }
-
-    def set_item_nutrition(self, item_name: str, macros: dict[str, float]) -> dict[str, float]:
-        name = self._normalize_name(item_name)
-        self.data.setdefault("nutrition", {})
-        self.data["nutrition"][name] = {
-            "carbs": float(macros.get("carbs", 0.0) or 0.0),
-            "protein": float(macros.get("protein", 0.0) or 0.0),
-            "fat": float(macros.get("fat", 0.0) or 0.0),
-        }
-        pending = self.data.get("pending_items", [])
-        self.data["pending_items"] = [item for item in pending if item != name]
-        self.save()
-        return self.data["nutrition"][name]
+            self._remove_pending_item(name)
+            self.save()
+            return self.data["nutrition"][name]
 
     def apply_ai_nutrition(self, updates: dict[str, dict[str, float]]) -> None:
-        for item_name, macros in (updates or {}).items():
-            if not item_name:
-                continue
-            self.set_item_nutrition(item_name, macros)
+        with self._lock:
+            for item_name, macros in (updates or {}).items():
+                if not item_name:
+                    continue
+                normalized = self._normalize_name(item_name)
+                if self.data.get("foods", {}).get(normalized, 0) < 1:
+                    continue
+                self.set_item_nutrition(item_name, macros)
 
     def get_macro_totals(self) -> dict[str, Any]:
-        totals = {"carbs": 0.0, "protein": 0.0, "fat": 0.0}
-        item_totals: dict[str, dict[str, float]] = {}
+        with self._lock:
+            totals = {"carbs": 0.0, "protein": 0.0, "fat": 0.0}
+            item_totals: dict[str, dict[str, float]] = {}
 
-        for item_name, quantity in self.data.get("foods", {}).items():
-            nutrition = self.data.get("nutrition", {}).get(item_name, {"carbs": 0.0, "protein": 0.0, "fat": 0.0})
-            carbs = float(nutrition.get("carbs", 0.0) or 0.0)
-            protein = float(nutrition.get("protein", 0.0) or 0.0)
-            fat = float(nutrition.get("fat", 0.0) or 0.0)
+            for item_name, quantity in self.data.get("foods", {}).items():
+                nutrition = self.data.get("nutrition", {}).get(item_name, {"carbs": 0.0, "protein": 0.0, "fat": 0.0})
+                carbs = float(nutrition.get("carbs", 0.0) or 0.0)
+                protein = float(nutrition.get("protein", 0.0) or 0.0)
+                fat = float(nutrition.get("fat", 0.0) or 0.0)
 
-            item_totals[item_name] = {
-                "carbs": round(carbs * float(quantity), 2),
-                "protein": round(protein * float(quantity), 2),
-                "fat": round(fat * float(quantity), 2),
+                item_totals[item_name] = {
+                    "carbs": round(carbs * float(quantity), 2),
+                    "protein": round(protein * float(quantity), 2),
+                    "fat": round(fat * float(quantity), 2),
+                }
+                totals["carbs"] += item_totals[item_name]["carbs"]
+                totals["protein"] += item_totals[item_name]["protein"]
+                totals["fat"] += item_totals[item_name]["fat"]
+
+            return {
+                "totals": {key: round(value, 2) for key, value in totals.items()},
+                "items": item_totals,
             }
-            totals["carbs"] += item_totals[item_name]["carbs"]
-            totals["protein"] += item_totals[item_name]["protein"]
-            totals["fat"] += item_totals[item_name]["fat"]
-
-        return {
-            "totals": {key: round(value, 2) for key, value in totals.items()},
-            "items": item_totals,
-        }
 
     def get_store(self) -> dict[str, int]:
-        return dict(self.data.get("foods", {}))
+        with self._lock:
+            return dict(self.data.get("foods", {}))
 
     def get_budget(self) -> float:
-        return float(self.data.get("budget", 0))
+        with self._lock:
+            return float(self.data.get("budget", 0))
 
     def set_budget(self, amount: float) -> float:
-        self.data["budget"] = float(amount)
-        self.save()
-        return self.get_budget()
+        with self._lock:
+            self.data["budget"] = float(amount)
+            self.save()
+            return self.get_budget()
 
     def update_budget(self, change: float) -> float:
-        self.data["budget"] = self.get_budget() + float(change)
-        self.save()
-        return self.get_budget()
+        with self._lock:
+            self.data["budget"] = self.get_budget() + float(change)
+            self.save()
+            return self.get_budget()
 
     def get_all(self) -> dict[str, Any]:
-        return {
-            "foods": self.get_store(),
-            "budget": self.get_budget(),
-            "nutrition": self.get_nutrition_store(),
-            "pending_items": self.get_pending_items(),
-            "last_ai_run": self.get_last_ai_run(),
-            "macro_totals": self.get_macro_totals(),
-        }
+        with self._lock:
+            return {
+                "foods": self.get_store(),
+                "budget": self.get_budget(),
+                "nutrition": self.get_nutrition_store(),
+                "pending_items": self.get_pending_items(),
+                "last_ai_run": self.get_last_ai_run(),
+                "macro_totals": self.get_macro_totals(),
+            }
 
     @staticmethod
     def _normalize_name(item_name: str) -> str:

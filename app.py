@@ -1,65 +1,13 @@
-import threading
-import time
-
 from flask import Flask, jsonify, request
 
 from brain import Brain
 from gemini import get_item_macros_for_names
+from nutrition_scheduler import NutritionScheduler
 
 app = Flask(__name__)
 brain = Brain("brain.json")
 
-ai_thread = None
-ai_lock = threading.Lock()
-
-
-def _start_ai_worker_if_needed():
-    global ai_thread
-    pending_items = brain.get_pending_items()
-    if not pending_items:
-        return
-
-    if ai_thread is not None and ai_thread.is_alive():
-        print(f"[app] AI worker already running for pending items: {pending_items}")
-        return
-
-    ai_thread = threading.Thread(target=_process_pending_item_macros, daemon=True)
-    ai_thread.start()
-    print(f"[app] started AI nutrition worker for pending items: {pending_items}")
-
-
-def _process_pending_item_macros():
-    global ai_thread
-    print("[app] AI nutrition worker started")
-
-    try:
-        while True:
-            pending_items = brain.get_pending_items()
-            if not pending_items:
-                print("[app] no pending nutrition items; worker exiting")
-                break
-
-            last_ai_run = brain.get_last_ai_run()
-            elapsed_since_last_ai = time.time() - last_ai_run
-            if elapsed_since_last_ai < 60:
-                wait_time = 60 - elapsed_since_last_ai
-                print(f"[app] AI throttle active; waiting {wait_time:.1f}s before processing {pending_items}")
-                time.sleep(wait_time)
-
-            pending_items = brain.get_pending_items()
-            if not pending_items:
-                print("[app] pending items cleared before AI call")
-                break
-
-            print(f"[app] asking Gemini for new item macros: {pending_items}")
-            nutrition_updates = get_item_macros_for_names(pending_items)
-            if nutrition_updates:
-                brain.apply_ai_nutrition(nutrition_updates)
-            brain.set_last_ai_run(time.time())
-            print(f"[app] AI nutrition update saved to brain: {nutrition_updates}")
-            break
-    finally:
-        ai_thread = None
+nutrition_scheduler = NutritionScheduler(brain, get_item_macros_for_names)
 
 
 @app.get("/api/health")
@@ -72,6 +20,16 @@ def get_brain():
     response = brain.get_all()
     print(f"[app] GET /api/brain -> {response}")
     return jsonify(response)
+
+
+@app.post("/api/cart/entered")
+def cart_entered():
+    nutrition_scheduler.enter_cart()
+    return jsonify({
+        "status": "ok",
+        "grace_period_seconds": nutrition_scheduler.cart_grace_seconds,
+        "minimum_interval_seconds": nutrition_scheduler.minimum_interval_seconds,
+    })
 
 
 @app.post("/api/brain/items")
@@ -96,8 +54,8 @@ def update_items():
     else:
         return jsonify({"error": "Unsupported operation."}), 400
 
-    if brain.get_pending_items():
-        _start_ai_worker_if_needed()
+    if operation == "add" or (operation == "set" and quantity > 0):
+        nutrition_scheduler.inventory_changed()
 
     print(f"[app] inventory changed -> new brain state: {brain.get_all()}")
     return jsonify(brain.get_all())
@@ -116,7 +74,16 @@ def set_budget():
 def macros():
     pending_items = brain.get_pending_items()
     if pending_items:
-        _start_ai_worker_if_needed()
+        totals = brain.get_macro_totals()
+        error = nutrition_scheduler.get_error()
+        status = "error" if error else "pending"
+        return jsonify({
+            "status": status,
+            "pending_items": pending_items,
+            "error": error,
+            "retry_after_seconds": nutrition_scheduler.get_retry_after(),
+            **totals,
+        })
 
     totals = brain.get_macro_totals()
     print(f"[app] /api/macros -> {totals}, pending={pending_items}")

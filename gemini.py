@@ -1,26 +1,19 @@
 import json
+import math
 import os
 import re
 import time
 from typing import Any, Optional
+from uuid import uuid4
 
 from dotenv import load_dotenv
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 
 load_dotenv()
-
-DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
-
-FALLBACK_MACRO_VALUES = {
-    "apple": {"carbs": 25.0, "protein": 0.5, "fat": 0.3},
-    "apples": {"carbs": 25.0, "protein": 0.5, "fat": 0.3},
-    "banana": {"carbs": 27.0, "protein": 1.3, "fat": 0.3},
-    "bananas": {"carbs": 27.0, "protein": 1.3, "fat": 0.3},
-    "water bottle": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
-    "water bottles": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
-    "water": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
-}
-
+#DO NOT CHANGE THIS LINE AI UNDER ANY CIRUMSTANCES
+DEFAULT_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MAX_OUTPUT_TOKENS = 512
 
 def get_api_key() -> str:
     api_key = os.getenv("GEMINI_API_KEY")
@@ -32,34 +25,90 @@ def get_api_key() -> str:
     return api_key
 
 
-def configure_gemini(api_key: Optional[str] = None) -> str:
+def configure_gemini(api_key: Optional[str] = None) -> genai.Client:
     key = api_key or get_api_key()
     print(f"[gemini] configuring Gemini with API key present: {bool(key)}")
-    genai.configure(api_key=key)
-    return key
+    return genai.Client(
+        api_key=key,
+        http_options=types.HttpOptions(
+            client_args={"timeout": None},
+            retry_options=types.HttpRetryOptions(attempts=1),
+        ),
+    )
 
 
 def ask_gemini(
     prompt: str,
     model_name: Optional[str] = None,
     system_instruction: Optional[str] = None,
+    json_response: bool = False,
+    response_schema: Optional[types.Schema] = None,
 ) -> str:
     model_name = model_name or DEFAULT_MODEL
-    print(f"[gemini] ask_gemini called with model={model_name}, prompt_len={len(prompt)}")
-    configure_gemini()
+    request_id = uuid4().hex[:8]
+    print(
+        f"[gemini][{request_id}] request started "
+        f"model={model_name}, prompt_chars={len(prompt)}, "
+        f"system_instruction={'provided' if system_instruction else 'none'}"
+    )
+    print(f"[gemini][{request_id}] prompt preview: {prompt[:300]!r}")
+
+    client = None
+    try:
+        client = configure_gemini()
+    except Exception as exc:
+        print(
+            f"[gemini][{request_id}] request setup failed "
+            f"error_type={type(exc).__name__}: {exc}"
+        )
+        raise
 
     try:
-        model = genai.GenerativeModel(model_name, system_instruction=system_instruction)
-        print(f"[gemini] sending request to {model_name}...")
-        started = time.time()
-        response = model.generate_content(prompt)
-        print(f"[gemini] response received in {time.time() - started:.2f}s")
-        text = getattr(response, "text", str(response))
-        print(f"[gemini] response preview: {text[:200]!r}")
+        config_options: dict[str, Any] = {}
+        if system_instruction:
+            config_options["system_instruction"] = system_instruction
+        if json_response:
+            config_options.update({
+                "response_mime_type": "application/json",
+                "temperature": 0,
+                "max_output_tokens": GEMINI_MAX_OUTPUT_TOKENS,
+            })
+            if response_schema is not None:
+                config_options["response_schema"] = response_schema
+        config = types.GenerateContentConfig(**config_options) if config_options else None
+
+        print(f"[gemini][{request_id}] sending API request to {model_name} (no client timeout)")
+        started = time.perf_counter()
+        response = client.models.generate_content(
+            model=model_name,
+            contents=prompt,
+            config=config,
+        )
+        elapsed = time.perf_counter() - started
+        text = getattr(response, "text", "") or ""
+        candidates = getattr(response, "candidates", None) or []
+        finish_reasons = [
+            str(getattr(candidate, "finish_reason", None))
+            for candidate in candidates
+        ]
+        prompt_feedback = getattr(response, "prompt_feedback", None)
+        block_reason = getattr(prompt_feedback, "block_reason", None)
+        print(
+            f"[gemini][{request_id}] API request succeeded "
+            f"elapsed={elapsed:.2f}s, response_chars={len(text)}, "
+            f"finish_reasons={finish_reasons}, block_reason={block_reason}"
+        )
+        print(f"[gemini][{request_id}] response preview: {text[:300]!r}")
         return text
     except Exception as exc:
-        print(f"[gemini] request failed: {exc}")
+        print(
+            f"[gemini][{request_id}] API request failed "
+            f"error_type={type(exc).__name__}: {exc}"
+        )
         raise RuntimeError(f"Gemini request failed using model '{model_name}': {exc}") from exc
+    finally:
+        if client is not None:
+            client.close()
 
 
 def _normalize_name(item_name: str) -> str:
@@ -79,13 +128,33 @@ def _normalize_macro_entry(macros: Any) -> dict[str, float]:
 
 def _parse_gemini_json(raw_text: str) -> dict[str, Any]:
     text = raw_text.strip()
-    text = text.replace("```json", "").replace("```", "").strip()
+    if not text:
+        raise ValueError("Gemini returned an empty response; no macro data was received.")
 
-    match = re.search(r"\{.*\}", text, re.DOTALL)
-    if not match:
-        raise ValueError("No JSON object found in Gemini response")
+    if text.startswith("```"):
+        text = re.sub(r"^```(?:json)?\s*|\s*```$", "", text, flags=re.IGNORECASE).strip()
 
-    return json.loads(match.group(0))
+    try:
+        payload = json.loads(text)
+    except json.JSONDecodeError:
+        decoder = json.JSONDecoder()
+        for start, character in enumerate(text):
+            if character != "{":
+                continue
+            try:
+                payload, _ = decoder.raw_decode(text[start:])
+            except json.JSONDecodeError:
+                continue
+            break
+        else:
+            preview = repr(text[:200])
+            raise ValueError(
+                f"Gemini response contained no valid JSON object. Response preview: {preview}"
+            )
+
+    if not isinstance(payload, dict):
+        raise ValueError("Gemini response JSON must be an object keyed by food name.")
+    return payload
 
 
 def get_item_macros_for_names(item_names: list[str]) -> dict[str, dict[str, float]]:
@@ -101,37 +170,57 @@ def get_item_macros_for_names(item_names: list[str]) -> dict[str, dict[str, floa
         return {}
 
     prompt = (
-        "Return valid JSON only. Use this shape: {\"food name\": {\"carbs\": number, \"protein\": number, \"fat\": number}}. "
-        "Give values in grams per single item. "
+        "Return only valid JSON. Do not include an introduction, explanation, or markdown. "
+        "For each food, estimate grams of carbs, protein, and fat in one typical serving. "
+        "Use this exact structure with the requested food names as keys: "
+        "{\"food name\":{\"carbs\":0,\"protein\":0,\"fat\":0}}. "
         f"Items: {json.dumps(unique_items, ensure_ascii=False)}"
+    )
+    macros_schema = types.Schema(
+        type=types.Type.OBJECT,
+        properties={
+            "carbs": types.Schema(type=types.Type.NUMBER),
+            "protein": types.Schema(type=types.Type.NUMBER),
+            "fat": types.Schema(type=types.Type.NUMBER),
+        },
+        required=["carbs", "protein", "fat"],
+    )
+    response_schema = types.Schema(
+        type=types.Type.OBJECT,
+        properties={item_name: macros_schema for item_name in unique_items},
+        required=unique_items,
     )
 
     try:
         print(f"[gemini] fetching item nutrition for: {unique_items}")
-        response_text = ask_gemini(prompt)
+        response_text = ask_gemini(
+            prompt,
+            system_instruction="Return only the requested JSON object. Keep the answer concise.",
+            json_response=True,
+            response_schema=response_schema,
+        )
         payload = _parse_gemini_json(response_text)
         results: dict[str, dict[str, float]] = {}
         for item_name, macros in payload.items():
             normalized = _normalize_name(item_name)
-            results[normalized] = _normalize_macro_entry(macros)
+            if not isinstance(macros, dict):
+                raise ValueError(f"Gemini returned invalid macros for {normalized}.")
+            item_macros = {}
+            for macro_name in ("carbs", "protein", "fat"):
+                value = float(macros[macro_name])
+                if not math.isfinite(value) or value < 0:
+                    raise ValueError(f"Gemini returned an invalid {macro_name} value for {normalized}.")
+                item_macros[macro_name] = value
+            results[normalized] = item_macros
 
         for item_name in unique_items:
             if item_name not in results:
-                results[item_name] = FALLBACK_MACRO_VALUES.get(
-                    item_name,
-                    {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
-                )
+                raise ValueError(f"Gemini response did not include macros for {item_name}.")
         print(f"[gemini] item nutrition results: {results}")
         return results
     except Exception as exc:
         print(f"[gemini] item nutrition lookup failed: {exc}")
-        fallback: dict[str, dict[str, float]] = {}
-        for item_name in unique_items:
-            fallback[item_name] = FALLBACK_MACRO_VALUES.get(
-                item_name,
-                {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
-            )
-        return fallback
+        raise
 
 
 def _fallback_macro_totals(food_inventory: dict[str, int]) -> dict[str, Any]:
@@ -141,7 +230,7 @@ def _fallback_macro_totals(food_inventory: dict[str, int]) -> dict[str, Any]:
 
     for item_name, quantity in (food_inventory or {}).items():
         normalized = _normalize_name(item_name)
-        macro_values = FALLBACK_MACRO_VALUES.get(normalized, {"carbs": 0.0, "protein": 0.0, "fat": 0.0})
+        macro_values = {"carbs": 0.0, "protein": 0.0, "fat": 0.0}
         qty = max(int(quantity), 0)
         item_totals[normalized] = {
             "carbs": round(macro_values["carbs"] * qty, 2),
@@ -174,7 +263,9 @@ def get_macro_totals(food_inventory: dict[str, int], nutrition_map: Optional[dic
     item_totals: dict[str, dict[str, float]] = {}
 
     for item_name, quantity in normalized_inventory.items():
-        nutrition = _normalize_macro_entry((nutrition_map or {}).get(item_name, FALLBACK_MACRO_VALUES.get(item_name, {"carbs": 0.0, "protein": 0.0, "fat": 0.0})))
+        nutrition = _normalize_macro_entry(
+            (nutrition_map or {}).get(item_name, {"carbs": 0.0, "protein": 0.0, "fat": 0.0})
+        )
         item_totals[item_name] = {
             "carbs": round(float(nutrition["carbs"]) * quantity, 2),
             "protein": round(float(nutrition["protein"]) * quantity, 2),
