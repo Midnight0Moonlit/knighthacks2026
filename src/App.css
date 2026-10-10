@@ -134,43 +134,57 @@ body {
   margin-bottom: 1rem;
   text-align: center;
 }
-.macro-pie-chart {
-  position: relative;
-  width: min(220px, 100%);
-  aspect-ratio: 1;
-  margin: 0 auto 1.25rem;
-  border-radius: 50%;
-  background: conic-gradient(
-    #ffe7a3 0% 30%,
-    #f4b6a3 30% 50%,
-    #a8d9cc 50% 100%
-  );
-}
-.macro-label {
-  position: absolute;
-  display: flex;
-  flex-direction: column;
+.macro-progress-layout {
+  display: grid;
+  grid-template-columns: minmax(130px, 1fr) minmax(130px, 1fr);
   align-items: center;
+  gap: 1rem;
+}
+.macro-rings {
+  width: 100%;
+  max-width: 280px;
+  height: auto;
+  overflow: visible;
+}
+.macro-ring-track,
+.macro-ring-progress {
+  fill: none;
+  stroke-width: 15;
+}
+.macro-ring-track {
+  opacity: 0.22;
+}
+.macro-ring-progress {
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s ease;
+}
+.macro-progress-list {
+  display: grid;
+  gap: 1rem;
+  list-style: none;
+}
+.macro-progress-item {
+  display: grid;
+  gap: 0.25rem;
   color: #34404a;
-  font-size: clamp(0.65rem, 3.5vw, 0.9rem);
-  font-weight: bold;
-  line-height: 1.2;
-  text-align: center;
-  transform: translate(-50%, -50%);
+  font-size: 0.95rem;
 }
-.macro-label-protein {
-  top: 32%;
-  left: 68%;
+.macro-progress-name {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 600;
 }
-.macro-label-carbs {
-  top: 50%;
-  left: 30%;
+.macro-progress-swatch {
+  width: 0.8rem;
+  height: 0.8rem;
+  flex: 0 0 auto;
+  border-radius: 50%;
 }
-.macro-label-fat {
-  top: 68%;
-  left: 68%;
+.macro-progress-item strong {
+  padding-left: 1.3rem;
+  font-size: 1.1rem;
 }
-
 /* WebSocket Status */
 .status-badge { display: flex; align-items: center; gap: 0.5rem; }
 .dot { width: 12px; height: 12px; border-radius: 50%; }
@@ -205,6 +219,10 @@ body {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     align-items: stretch;
+  }
+
+  .nutrition-card {
+    grid-column: 1 / -1;
   }
 
   .nutrition-card { min-height: 200px; }
@@ -273,6 +291,11 @@ body {
 
   .receipt-panel {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .macro-progress-layout {
+    grid-template-columns: minmax(110px, 0.9fr) minmax(110px, 1.1fr);
+    gap: 0.75rem;
   }
 
   .receipt-card {

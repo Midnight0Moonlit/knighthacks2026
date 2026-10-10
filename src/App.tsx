@@ -10,10 +10,10 @@ const CATALOG = {
 
 type ItemKey = keyof typeof CATALOG;
 
-const MACRO_BREAKDOWN = [
-  { name: 'Protein', percentage: 30, className: 'protein' },
-  { name: 'Carbs', percentage: 50, className: 'carbs' },
-  { name: 'Fat', percentage: 20, className: 'fat' },
+const MACRO_PROGRESS = [
+  { name: 'Protein', current: 72, goal: 120, color: '#f5c542', radius: 108 },
+  { name: 'Carbs', current: 145, goal: 250, color: '#42bda0', radius: 81 },
+  { name: 'Fat', current: 28, goal: 65, color: '#ed8068', radius: 54 },
 ];
 
 function StartPage() {
@@ -211,18 +211,51 @@ function CartDashboard() {
           </div>
 
           <div className="nutrition-card">
-            <h2 className="nutrition-title">Macro Breakdown</h2>
-            <div
-              className="macro-pie-chart"
-              role="img"
-              aria-label="Macro breakdown: Protein 30%, Carbs 50%, Fat 20%."
-            >
-              {MACRO_BREAKDOWN.map((macro) => (
-                <span key={macro.name} className={`macro-label macro-label-${macro.className}`}>
-                  <strong>{macro.name}</strong>
-                  <span>{macro.percentage}%</span>
-                </span>
-              ))}
+            <h2 className="nutrition-title">Macro Goals</h2>
+            <div className="macro-progress-layout">
+              <svg
+                className="macro-rings"
+                viewBox="0 0 260 260"
+                role="img"
+                aria-label={`Macro progress: ${MACRO_PROGRESS.map((macro) => `${macro.name} ${macro.current} of ${macro.goal} grams`).join(', ')}.`}
+              >
+                {MACRO_PROGRESS.map((macro) => {
+                  const circumference = 2 * Math.PI * macro.radius;
+                  const progress = Math.min(macro.current / macro.goal, 1);
+
+                  return (
+                    <g key={macro.name} transform="rotate(-90 130 130)">
+                      <circle
+                        cx="130"
+                        cy="130"
+                        r={macro.radius}
+                        className="macro-ring-track"
+                        stroke={macro.color}
+                      />
+                      <circle
+                        cx="130"
+                        cy="130"
+                        r={macro.radius}
+                        className="macro-ring-progress"
+                        stroke={macro.color}
+                        strokeDasharray={circumference}
+                        strokeDashoffset={circumference * (1 - progress)}
+                      />
+                    </g>
+                  );
+                })}
+              </svg>
+              <ul className="macro-progress-list">
+                {MACRO_PROGRESS.map((macro) => (
+                  <li key={macro.name} className="macro-progress-item">
+                    <span className="macro-progress-name">
+                      <span className="macro-progress-swatch" style={{ backgroundColor: macro.color }} />
+                      {macro.name}
+                    </span>
+                    <strong>{macro.current}/{macro.goal} g</strong>
+                  </li>
+                ))}
+              </ul>
             </div>
           </div>
         </div>
