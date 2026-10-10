@@ -1,186 +1,132 @@
-.counter {
-  font-size: 16px;
-  padding: 5px 10px;
-  border-radius: 5px;
-  color: var(--accent);
-  background: var(--accent-bg);
-  border: 2px solid transparent;
-  transition: border-color 0.3s;
-  margin-bottom: 24px;
-
-  &:hover {
-    border-color: var(--accent-border);
-  }
-  &:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
-  }
+/* Global Reset & iPad Viewport Lock */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+  user-select: none;
 }
 
-.hero {
-  position: relative;
-
-  .base,
-  .framework,
-  .vite {
-    inset-inline: 0;
-    margin: 0 auto;
-  }
-
-  .base {
-    width: 170px;
-    position: relative;
-    z-index: 0;
-  }
-
-  .framework,
-  .vite {
-    position: absolute;
-  }
-
-  .framework {
-    z-index: 1;
-    top: 34px;
-    height: 28px;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(44deg) rotateY(39deg)
-      scale(1.4);
-  }
-
-  .vite {
-    z-index: 0;
-    top: 107px;
-    height: 26px;
-    width: auto;
-    transform: perspective(2000px) rotateZ(300deg) rotateX(40deg) rotateY(39deg)
-      scale(0.8);
-  }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  background-color: #f8f9fa;
+  color: #333;
 }
 
-#center {
+.ipad-viewport {
+  width: 100dvw;
+  height: 100dvh;
+  overflow: hidden;
+  touch-action: manipulation;
   display: flex;
   flex-direction: column;
-  gap: 25px;
-  place-content: center;
-  place-items: center;
-  flex-grow: 1;
-
-  @media (max-width: 1024px) {
-    padding: 32px 20px 24px;
-    gap: 18px;
-  }
 }
 
-#next-steps {
+/* Header */
+.top-header {
+  background-color: #1a8e2d;
+  color: white;
   display: flex;
-  border-top: 1px solid var(--border);
-  text-align: left;
+  justify-content: space-between;
+  align-items: center;
+  padding: 1rem 2rem;
+  font-size: 1.25rem;
+}
+.dark-header { background-color: #2c3e50; }
 
-  & > div {
-    flex: 1 1 0;
-    padding: 32px;
-    @media (max-width: 1024px) {
-      padding: 24px 20px;
-    }
-  }
+/* Page Wrappers & Typography */
+.page-wrapper {
+  flex: 1; display: flex; flex-direction: column;
+  justify-content: center; align-items: center; text-align: center;
+}
+.title-text { font-size: 3rem; color: #2c3e50; margin-bottom: 0.5rem; }
+.subtitle-text { font-size: 1.5rem; color: #34495e; font-weight: 400; margin-bottom: 3rem; }
+.helper-text { font-size: 1.2rem; color: #7f8c8d; margin-top: 1rem; }
 
-  .icon {
-    margin-bottom: 16px;
-    width: 22px;
-    height: 22px;
-  }
+/* Start & Budget Components */
+.giant-start-btn {
+  background-color: #1a8e2d; color: white; font-size: 4.5rem; font-weight: bold;
+  padding: 1.5rem 4rem; border: none; border-radius: 2rem;
+  box-shadow: 0 10px 20px rgba(26, 142, 45, 0.3); cursor: pointer; transition: transform 0.1s;
+}
+.giant-start-btn:active { transform: scale(0.95); }
 
-  @media (max-width: 1024px) {
-    flex-direction: column;
-    text-align: center;
-  }
+.budget-card {
+  background: white; padding: 2rem; border-radius: 1rem;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.1); margin-bottom: 2rem;
+}
+.budget-label { font-size: 1rem; font-weight: bold; color: #555; text-transform: uppercase; margin-bottom: 1rem; }
+.budget-input-wrapper { display: flex; align-items: center; justify-content: center; font-size: 5rem; font-weight: bold; }
+.budget-input { font-size: 5rem; font-weight: bold; border: none; outline: none; width: 250px; text-align: left; }
+.budget-btn { background-color: #1a8e2d; color: white; font-size: 2rem; padding: 1rem 3rem; border: none; border-radius: 1rem; cursor: pointer; }
+
+/* Dashboard Layout */
+.dashboard {
+  flex: 1; display: grid; grid-template-columns: 3fr 2fr; gap: 2rem; padding: 2rem; background: #eaeded;
 }
 
-#docs {
-  border-right: 1px solid var(--border);
-
-  @media (max-width: 1024px) {
-    border-right: none;
-    border-bottom: 1px solid var(--border);
-  }
+/* Left Column: Catalog & Itemized Summary */
+.catalog-panel { background: white; border-radius: 1rem; padding: 1.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
+.catalog-items { flex: 1; overflow-y: auto; }
+.catalog-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1rem 0; border-bottom: 1px solid #eee; font-size: 1.5rem;
 }
+.controls { display: flex; align-items: center; gap: 1.5rem; }
 
-#next-steps ul {
-  list-style: none;
-  padding: 0;
-  display: flex;
-  gap: 8px;
-  margin: 32px 0 0;
-
-  .logo {
-    height: 18px;
-  }
-
-  a {
-    color: var(--text-h);
-    font-size: 16px;
-    border-radius: 6px;
-    background: var(--social-bg);
-    display: flex;
-    padding: 6px 12px;
-    align-items: center;
-    gap: 8px;
-    text-decoration: none;
-    transition: box-shadow 0.3s;
-
-    &:hover {
-      box-shadow: var(--shadow);
-    }
-    .button-icon {
-      height: 18px;
-      width: 18px;
-    }
-  }
-
-  @media (max-width: 1024px) {
-    margin-top: 20px;
-    flex-wrap: wrap;
-    justify-content: center;
-
-    li {
-      flex: 1 1 calc(50% - 8px);
-    }
-
-    a {
-      width: 100%;
-      justify-content: center;
-      box-sizing: border-box;
-    }
-  }
+/* 48x48 Touch Targets (Made slightly larger for tablet ease) */
+.touch-btn {
+  width: 56px; height: 56px; font-size: 2rem; font-weight: bold;
+  border: none; border-radius: 0.5rem; cursor: pointer;
+  display: flex; justify-content: center; align-items: center;
 }
+.btn-minus { background-color: #ffeaa7; color: #d35400; }
+.btn-plus { background-color: #55efc4; color: #00b894; }
 
-#spacer {
-  height: 88px;
-  border-top: 1px solid var(--border);
-  @media (max-width: 1024px) {
-    height: 48px;
-  }
+/* Subtotal & Tax moved to left column */
+.catalog-summary {
+  border-top: 2px dashed #bdc3c7; margin-top: 1rem; padding-top: 1rem;
+  display: flex; flex-direction: column; gap: 0.5rem; font-size: 1.25rem; color: #7f8c8d;
 }
+.summary-line { display: flex; justify-content: space-between; padding: 0 1rem; }
 
-.ticks {
-  position: relative;
-  width: 100%;
+/* Right Column: Telemetry & Progress */
+.receipt-panel { display: flex; flex-direction: column; gap: 1rem; }
+.receipt-card { background: white; border-radius: 1rem; padding: 2rem; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
 
-  &::before,
-  &::after {
-    content: '';
-    position: absolute;
-    top: -4.5px;
-    border: 5px solid transparent;
-  }
-
-  &::before {
-    left: 0;
-    border-left-color: var(--border);
-  }
-  &::after {
-    right: 0;
-    border-right-color: var(--border);
-  }
+/* Budget Progress Bar */
+.progress-header { display: flex; justify-content: space-between; font-weight: bold; margin-bottom: 0.5rem; font-size: 1.25rem; }
+.progress-container {
+  width: 100%; height: 28px; background-color: #ecf0f1;
+  border-radius: 14px; overflow: hidden; margin-bottom: 1.5rem;
+  box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
 }
+.progress-bar {
+  height: 100%; background-color: #1a8e2d;
+  transition: width 0.3s ease, background-color 0.3s ease;
+}
+.progress-bar.over-budget { background-color: #e74c3c; }
 
-/
+.receipt-total { display: flex; justify-content: space-between; font-size: 3rem; font-weight: bold; margin-bottom: 1rem; }
+.checkout-btn { background-color: #0984e3; color: white; width: 100%; font-size: 2rem; padding: 1.5rem; border: none; border-radius: 1rem; cursor: pointer; }
+.reset-btn { background: #e74c3c; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: bold; font-size: 1rem; }
+
+/* Activity Log */
+.activity-log { background: #2d3436; color: white; padding: 1rem; border-radius: 1rem; flex: 1; overflow: hidden; font-family: monospace; font-size: 1.1rem; }
+.log-entry { padding: 0.5rem; margin-bottom: 0.25rem; border-radius: 0.25rem; }
+.log-vision { color: #55efc4; }
+.log-manual { color: #ffeaa7; }
+
+/* WebSocket Status */
+.status-badge { display: flex; align-items: center; gap: 0.5rem; }
+.dot { width: 12px; height: 12px; border-radius: 50%; }
+.dot.green { background-color: #00e676; box-shadow: 0 0 8px #00e676; }
+.dot.red { background-color: #ff5252; box-shadow: 0 0 8px #ff5252; }
+.dot.yellow { background-color: #ffd600; box-shadow: 0 0 8px #ffd600; }
+
+/* Pulse Animation */
+@keyframes pulseGreen {
+  0% { background-color: transparent; }
+  50% { background-color: rgba(85, 239, 196, 0.4); }
+  100% { background-color: transparent; }
+}
+.pulse-anim { animation: pulseGreen 0.5s ease-out; }
