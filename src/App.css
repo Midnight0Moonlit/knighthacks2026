@@ -122,17 +122,102 @@ body {
 
 /* Macro Breakdown */
 .nutrition-card {
+  position: relative;
   background: white;
   border-radius: 1rem;
   padding: 1.5rem;
   box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
 }
+.nutrition-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  margin-bottom: 1rem;
+}
 .nutrition-title {
   color: #2c3e50;
   font-size: 1.5rem;
   font-weight: bold;
-  margin-bottom: 1rem;
   text-align: center;
+}
+.macro-settings-button {
+  position: absolute;
+  right: 0;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border: 1px solid #dce5e0;
+  border-radius: 0.75rem;
+  background: #f5f8f6;
+  color: #527064;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+.macro-settings-button:hover,
+.macro-settings-button[aria-expanded="true"] {
+  background: #e8f3ed;
+  color: #1a8e2d;
+}
+.macro-settings-button:active {
+  transform: scale(0.95);
+}
+.macro-settings-button:focus-visible,
+.macro-goal-input-wrap input:focus-visible {
+  outline: 3px solid rgba(26, 142, 45, 0.35);
+  outline-offset: 2px;
+}
+.macro-settings-button svg {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.7;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.macro-settings-panel {
+  position: absolute;
+  z-index: 2;
+  top: 4.5rem;
+  right: 1rem;
+  width: min(280px, calc(100% - 2rem));
+  padding: 1rem;
+  border: 1px solid #e1e9e4;
+  border-radius: 1rem;
+  background: white;
+  box-shadow: 0 12px 30px rgba(31, 63, 45, 0.18);
+}
+.macro-settings-panel h3 {
+  margin-bottom: 0.75rem;
+  color: #2c3e50;
+  font-size: 1rem;
+}
+.macro-goal-field {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.5rem 0;
+  color: #34495e;
+  font-weight: 600;
+}
+.macro-goal-input-wrap {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: #7f8c8d;
+}
+.macro-goal-input-wrap input {
+  width: 92px;
+  min-height: 44px;
+  padding: 0.5rem;
+  border: 1px solid #dce5e0;
+  border-radius: 0.5rem;
+  color: #2c3e50;
+  font: inherit;
+  text-align: right;
 }
 .macro-progress-layout {
   display: grid;

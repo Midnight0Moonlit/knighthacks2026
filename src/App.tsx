@@ -14,21 +14,19 @@ const MACRO_PROGRESS = [
   { name: 'Protein', current: 72, goal: 120, color: '#f5c542', radius: 108 },
   { name: 'Carbs', current: 145, goal: 250, color: '#42bda0', radius: 81 },
   { name: 'Fat', current: 28, goal: 65, color: '#ed8068', radius: 54 },
-];
+] as const;
+
+type MacroName = (typeof MACRO_PROGRESS)[number]['name'];
 
 function StartPage() {
   const navigate = useNavigate();
   return (
     <>
       <header className="top-header">
-        <div><strong>Budget Buddies</strong> • Powered by Jetson</div>
-        <div className="status-badge"><div className="dot green"></div>Systems Connected</div>
+        <div><strong>Budget Buddies</strong></div>
       </header>
       <main className="page-wrapper">
-        <h1 className="title-text">Welcome to Budget Buddies!</h1>
-        <h2 className="subtitle-text">Ready to start your shopping trip?</h2>
-        <button className="giant-start-btn" onClick={() => navigate('/budget')}>START ➔</button>
-        <p className="helper-text">Tap here to set your budget and begin.</p>
+        <button className="giant-start-btn" onClick={() => navigate('/budget')}>START SHOPPING</button>
       </main>
     </>
   );
@@ -45,19 +43,16 @@ function BudgetPage() {
   return (
     <>
       <header className="top-header">
-        <div><strong>Budget Buddies</strong> • Powered by Jetson</div>
-        <div className="status-badge"><div className="dot green"></div>Systems Connected</div>
+        <div><strong>Budget Buddies</strong></div>
       </header>
       <main className="page-wrapper">
-        <h1 className="title-text">Set your shopping budget</h1>
-        <p className="subtitle-text">We'll alert you if you go over your budget.</p>
         <div className="budget-card">
           <div className="budget-label">ENTER BUDGET</div>
           <div className="budget-input-wrapper">
             $ <input type="number" className="budget-input" value={budget} onChange={(e) => setBudget(e.target.value)} autoFocus />
           </div>
         </div>
-        <button className="budget-btn" onClick={startShopping}>START SHOPPING ➔</button>
+        <button className="budget-btn" onClick={startShopping}>BEGIN</button>
       </main>
     </>
   );
@@ -68,7 +63,8 @@ function CartDashboard() {
   const budget = location.state?.budget || 0;
   
   const [inventory, setInventory] = useState<Record<ItemKey, number>>({ apple: 0, banana: 0, water: 0 });
-  const [wsStatus, setWsStatus] = useState<'connected' | 'offline' | 'reconnecting'>('offline');
+  const [macroGoals, setMacroGoals] = useState<Record<MacroName, number>>({ Protein: 120, Carbs: 250, Fat: 65 });
+  const [isMacroSettingsOpen, setIsMacroSettingsOpen] = useState(false);
   const [pulsingItem, setPulsingItem] = useState<string | null>(null);
   
   const wsRef = useRef<WebSocket | null>(null);
@@ -79,9 +75,6 @@ function CartDashboard() {
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
-    ws.onopen = () => {
-      setWsStatus('connected');
-    };
 
     ws.onmessage = (event) => {
       try {
@@ -94,11 +87,6 @@ function CartDashboard() {
       } catch (err) {
         console.error("Failed to parse WS message", err);
       }
-    };
-
-    ws.onclose = () => {
-      setWsStatus('reconnecting');
-      setTimeout(connectWebSocket, 2000);
     };
 
     ws.onerror = () => ws.close();
@@ -137,10 +125,6 @@ function CartDashboard() {
     <>
       <header className="top-header">
         <div><strong>Budget Buddies</strong></div>
-        <div className="status-badge">
-          <div className={`dot ${wsStatus === 'connected' ? 'green' : wsStatus === 'reconnecting' ? 'yellow' : 'red'}`}></div>
-          {wsStatus === 'connected' ? 'Live' : wsStatus === 'reconnecting' ? 'Reconnecting...' : 'Offline'}
-        </div>
         <button className="reset-btn" onClick={() => sendAction('RESET')}>Reset Cart</button>
       </header>
 
@@ -211,17 +195,58 @@ function CartDashboard() {
           </div>
 
           <div className="nutrition-card">
-            <h2 className="nutrition-title">Macro Goals</h2>
+            <div className="nutrition-card-header">
+              <h2 className="nutrition-title">Macro Goals</h2>
+              <button
+                className="macro-settings-button"
+                type="button"
+                aria-label="Change macro goals"
+                aria-expanded={isMacroSettingsOpen}
+                aria-controls="macro-goal-settings"
+                onClick={() => setIsMacroSettingsOpen((isOpen) => !isOpen)}
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true">
+                  <path d="M12 8.25a3.75 3.75 0 1 0 0 7.5 3.75 3.75 0 0 0 0-7.5Z" />
+                  <path d="m19.4 13.5 1.1.85-1.1 1.9-1.35-.45a7.8 7.8 0 0 1-1.4.8l-.25 1.4h-2.2l-.25-1.4a7.8 7.8 0 0 1-1.6 0l-.75 1.2-1.9-1.1.45-1.35a7.8 7.8 0 0 1-.8-1.4L8 13.7v-2.2l1.4-.25a7.8 7.8 0 0 1 .8-1.4l-.45-1.35 1.9-1.1.75 1.2a7.8 7.8 0 0 1 1.6 0l.25-1.4h2.2l.25 1.4a7.8 7.8 0 0 1 1.4.8l1.35-.45 1.1 1.9-1.1.85a7.8 7.8 0 0 1 0 1.8Z" transform="translate(-2.5 -1)" />
+                </svg>
+              </button>
+            </div>
+            {isMacroSettingsOpen && (
+              <div className="macro-settings-panel" id="macro-goal-settings" aria-label="Edit daily macro goals">
+                <h3>Daily goals</h3>
+                {MACRO_PROGRESS.map((macro) => (
+                  <label className="macro-goal-field" key={macro.name}>
+                    <span>{macro.name}</span>
+                    <span className="macro-goal-input-wrap">
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        value={macroGoals[macro.name]}
+                        onChange={(event) => {
+                          const goal = Number(event.target.value);
+                          if (Number.isFinite(goal) && goal > 0) {
+                            setMacroGoals((current) => ({ ...current, [macro.name]: goal }));
+                          }
+                        }}
+                        aria-label={`${macro.name} goal in grams`}
+                      />
+                      <span>g</span>
+                    </span>
+                  </label>
+                ))}
+              </div>
+            )}
             <div className="macro-progress-layout">
               <svg
                 className="macro-rings"
                 viewBox="0 0 260 260"
                 role="img"
-                aria-label={`Macro progress: ${MACRO_PROGRESS.map((macro) => `${macro.name} ${macro.current} of ${macro.goal} grams`).join(', ')}.`}
+                aria-label={`Macro progress: ${MACRO_PROGRESS.map((macro) => `${macro.name} ${macro.current} of ${macroGoals[macro.name]} grams`).join(', ')}.`}
               >
                 {MACRO_PROGRESS.map((macro) => {
                   const circumference = 2 * Math.PI * macro.radius;
-                  const progress = Math.min(macro.current / macro.goal, 1);
+                  const progress = Math.min(macro.current / macroGoals[macro.name], 1);
 
                   return (
                     <g key={macro.name} transform="rotate(-90 130 130)">
@@ -252,7 +277,7 @@ function CartDashboard() {
                       <span className="macro-progress-swatch" style={{ backgroundColor: macro.color }} />
                       {macro.name}
                     </span>
-                    <strong>{macro.current}/{macro.goal} g</strong>
+                    <strong>{macro.current}/{macroGoals[macro.name]} g</strong>
                   </li>
                 ))}
               </ul>
