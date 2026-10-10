@@ -1,32 +1,81 @@
-# React + TypeScript + Vite
+# Budget Buddies
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This project is a React + TypeScript frontend with a Python Flask backend and a local brain store for budget and nutrition tracking.
 
-Currently, two official plugins are available:
+## Local setup
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+### 1) Install Node dependencies
 
-## React Compiler
+From the project root:
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+npm install
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+### 2) Set up the Python virtual environment
+
+From the project root:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
+If `pip` is not available in the environment, install it first:
+
+```bash
+python3 -m ensurepip --upgrade
+```
+
+Then install the Python requirements:
+
+```bash
+pip install -r requirements.txt
+```
+
+### 3) Create a local environment file for Gemini
+
+Create a `.env` file in the project root with your API key:
+
+```bash
+GEMINI_API_KEY=your_key_here
+GEMINI_MODEL=gemini-2.5-flash
+```
+
+### 4) Start the backend
+
+```bash
+source .venv/bin/activate
+python3 app.py
+```
+
+The backend runs on port `5001`.
+
+### 5) Start the frontend
+
+In a second terminal:
+
+```bash
+npm run dev
+```
+
+The frontend runs on the Vite dev server, typically on port `5175` or another available port if the default is occupied.
+
+## Useful commands
+
+```bash
+# activate env
+source .venv/bin/activate
+
+# install python deps
+pip install -r requirements.txt
+
+# build frontend
+npm run build
+```
+
+## Notes
+
+- The app keeps shopping and budget state in `brain.json`.
+- The backend uses the local brain store and only calls Gemini when a new item needs macro metadata.
+- The frontend uses the Flask backend through the Vite proxy configuration.
