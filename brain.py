@@ -9,6 +9,19 @@ from typing import Any, Optional, Union
 class Brain:
     """Local storage for foods, budget, and cached macro data for each item."""
 
+    # FDA major food allergens: https://www.fda.gov/food/food-labeling-nutrition/food-allergies
+    DIETARY_RESTRICTIONS = (
+        {"id": "milk", "label": "Milk"},
+        {"id": "eggs", "label": "Eggs"},
+        {"id": "fish", "label": "Fish"},
+        {"id": "crustacean_shellfish", "label": "Crustacean shellfish"},
+        {"id": "tree_nuts", "label": "Tree nuts"},
+        {"id": "peanuts", "label": "Peanuts"},
+        {"id": "gluten", "label": "Gluten"},
+        {"id": "soybeans", "label": "Soybeans"},
+        {"id": "sesame", "label": "Sesame"},
+    )
+
     LEGACY_SEEDED_NUTRITION = {
         "apples": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
         "bananas": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
@@ -26,6 +39,8 @@ class Brain:
                     {
                         "foods": {},
                         "budget": 0,
+                        "dietary_restrictions": [],
+                        "other_dietary_restrictions": [],
                         "nutrition": {},
                         "last_ai_run": 0,
                         "pending_items": [],
@@ -54,6 +69,8 @@ class Brain:
             return {
                 "foods": {},
                 "budget": 0,
+                "dietary_restrictions": [],
+                "other_dietary_restrictions": [],
                 "nutrition": {},
                 "last_ai_run": 0,
                 "pending_items": [],
@@ -64,6 +81,8 @@ class Brain:
             return {
                 "foods": {},
                 "budget": 0,
+                "dietary_restrictions": [],
+                "other_dietary_restrictions": [],
                 "nutrition": {},
                 "last_ai_run": 0,
                 "pending_items": [],
@@ -96,6 +115,12 @@ class Brain:
             "foods": {self._normalize_name(k): max(int(v), 0) for k, v in foods.items()},
             "budget": float(loaded.get("budget", 0)),
             "nutrition": normalized_nutrition,
+            "dietary_restrictions": self._normalize_dietary_restrictions(
+                loaded.get("dietary_restrictions", [])
+            ),
+            "other_dietary_restrictions": self._normalize_other_dietary_restrictions(
+                loaded.get("other_dietary_restrictions", [])
+            ),
             "last_ai_run": float(loaded.get("last_ai_run", 0)),
             "pending_items": [self._normalize_name(item) for item in pending_items if str(item).strip()],
             "nutrition_migration_version": int(loaded.get("nutrition_migration_version", 0)),
@@ -295,6 +320,92 @@ class Brain:
         with self._lock:
             return dict(self.data.get("foods", {}))
 
+    @classmethod
+    def get_available_dietary_restrictions(cls) -> list[dict[str, str]]:
+        return [dict(restriction) for restriction in cls.DIETARY_RESTRICTIONS]
+
+    @classmethod
+    def _normalize_dietary_restrictions(cls, restrictions: Any) -> list[str]:
+        if not isinstance(restrictions, list):
+            return []
+        allowed_ids = {restriction["id"] for restriction in cls.DIETARY_RESTRICTIONS}
+        normalized = ("gluten" if restriction == "wheat" else restriction for restriction in restrictions)
+        return list(dict.fromkeys(
+            restriction for restriction in normalized
+            if isinstance(restriction, str) and restriction in allowed_ids
+        ))
+
+    @staticmethod
+    def _normalize_other_dietary_restrictions(restrictions: Any) -> list[str]:
+        if not isinstance(restrictions, list):
+            return []
+        normalized = []
+        seen = set()
+        for restriction in restrictions:
+            if not isinstance(restriction, str):
+                continue
+            label = re.sub(r"\s+", " ", restriction.strip())
+            key = label.casefold()
+            if label and key not in seen and len(label) <= 80:
+                seen.add(key)
+                normalized.append(label)
+        return normalized
+
+    def get_dietary_restrictions(self) -> list[str]:
+        with self._lock:
+            return list(self.data.get("dietary_restrictions", []))
+
+    def get_other_dietary_restrictions(self) -> list[str]:
+        with self._lock:
+            return list(self.data.get("other_dietary_restrictions", []))
+
+    def set_dietary_restrictions(self, restrictions: list[str]) -> list[str]:
+        self.set_dietary_preferences(
+            restrictions,
+            self.get_other_dietary_restrictions(),
+        )
+        return self.get_dietary_restrictions()
+
+    def set_dietary_preferences(
+        self,
+        restrictions: list[str],
+        other_restrictions: list[str],
+    ) -> dict[str, list[str]]:
+        with self._lock:
+            if not isinstance(restrictions, list) or any(
+                not isinstance(restriction, str) for restriction in restrictions
+            ):
+                raise ValueError("Dietary restrictions must be a list of restriction IDs.")
+
+            allowed_ids = {restriction["id"] for restriction in self.DIETARY_RESTRICTIONS}
+            unknown_ids = set(restrictions) - allowed_ids
+            if unknown_ids:
+                raise ValueError(
+                    f"Unsupported dietary restriction IDs: {', '.join(sorted(unknown_ids))}"
+                )
+
+            if not isinstance(other_restrictions, list) or any(
+                not isinstance(restriction, str) for restriction in other_restrictions
+            ):
+                raise ValueError("Other dietary restrictions must be a list of names.")
+
+            if any(len(re.sub(r"\s+", " ", restriction.strip())) > 80 for restriction in other_restrictions):
+                raise ValueError("Other dietary restriction names must be 80 characters or fewer.")
+
+            selected_ids = set(restrictions)
+            self.data["dietary_restrictions"] = [
+                restriction["id"] for restriction in self.DIETARY_RESTRICTIONS
+                if restriction["id"] in selected_ids
+            ]
+            self.data["other_dietary_restrictions"] = self._normalize_other_dietary_restrictions(
+                other_restrictions
+            )
+            self.save()
+            return {
+                "dietary_restrictions": self.get_dietary_restrictions(),
+                "other_dietary_restrictions": self.get_other_dietary_restrictions(),
+            }
+
     def get_budget(self) -> float:
         with self._lock:
             return float(self.data.get("budget", 0))
@@ -316,6 +427,9 @@ class Brain:
             return {
                 "foods": self.get_store(),
                 "budget": self.get_budget(),
+                "dietary_restrictions": self.get_dietary_restrictions(),
+                "other_dietary_restrictions": self.get_other_dietary_restrictions(),
+                "available_dietary_restrictions": self.get_available_dietary_restrictions(),
                 "nutrition": self.get_nutrition_store(),
                 "pending_items": self.get_pending_items(),
                 "last_ai_run": self.get_last_ai_run(),

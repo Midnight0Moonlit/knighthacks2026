@@ -12,6 +12,7 @@ const CATALOG = {
 
 type ItemKey = keyof typeof CATALOG;
 type MacroKey = 'protein' | 'carbs' | 'fat';
+type DietaryRestrictionOption = { id: string; label: string };
 
 const RECIPE_PREVIEWS: {
   title: string;
@@ -140,7 +141,222 @@ function StartPage() {
         <div><strong>Budget Buddies</strong></div>
       </header>
       <main className="page-wrapper">
-        <button className="giant-start-btn" onClick={() => navigate('/budget')}>START SHOPPING</button>
+        <button className="giant-start-btn" onClick={() => navigate('/dietary-restrictions')}>START SHOPPING</button>
+      </main>
+    </>
+  );
+}
+
+function DietaryRestrictionsPage() {
+  const navigate = useNavigate();
+  const [options, setOptions] = useState<DietaryRestrictionOption[]>([]);
+  const [selectedRestrictions, setSelectedRestrictions] = useState<string[]>([]);
+  const [otherRestrictions, setOtherRestrictions] = useState<string[]>([]);
+  const [otherRestrictionInput, setOtherRestrictionInput] = useState('');
+  const [isOtherEntryOpen, setIsOtherEntryOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
+  const [loadAttempt, setLoadAttempt] = useState(0);
+
+  useEffect(() => {
+    let isActive = true;
+    setIsLoading(true);
+    setErrorMessage('');
+
+    fetchJson('/api/brain')
+      .then((brainData) => {
+        const available = brainData?.available_dietary_restrictions;
+        if (!Array.isArray(available) || available.some(
+          (option) => typeof option?.id !== 'string' || typeof option?.label !== 'string',
+        )) {
+          throw new Error('The backend returned an invalid dietary restrictions list.');
+        }
+
+        const selected = brainData?.dietary_restrictions;
+        if (!Array.isArray(selected) || selected.some((id) => typeof id !== 'string')) {
+          throw new Error('The backend returned invalid saved dietary restrictions.');
+        }
+
+        const otherSelected = brainData?.other_dietary_restrictions;
+        if (!Array.isArray(otherSelected) || otherSelected.some((name) => typeof name !== 'string')) {
+          throw new Error('The backend returned invalid other dietary restrictions.');
+        }
+
+        if (isActive) {
+          setOptions(available);
+          setSelectedRestrictions(selected);
+          setOtherRestrictions(otherSelected);
+          setIsOtherEntryOpen(otherSelected.length > 0);
+        }
+      })
+      .catch((error: unknown) => {
+        console.error('[frontend] could not load dietary restrictions', error);
+        if (isActive) {
+          setErrorMessage('Could not load dietary restrictions. Please try again.');
+        }
+      })
+      .finally(() => {
+        if (isActive) setIsLoading(false);
+      });
+
+    return () => {
+      isActive = false;
+    };
+  }, [loadAttempt]);
+
+  const toggleRestriction = (restrictionId: string) => {
+    setSelectedRestrictions((current) => (
+      current.includes(restrictionId)
+        ? current.filter((id) => id !== restrictionId)
+        : [...current, restrictionId]
+    ));
+  };
+
+  const addOtherRestriction = () => {
+    const restriction = otherRestrictionInput.trim().replace(/\s+/g, ' ');
+    if (!restriction) return;
+    if (restriction.length > 80) {
+      setErrorMessage('Allergy names must be 80 characters or fewer.');
+      return;
+    }
+    if (otherRestrictions.some((existing) => existing.toLocaleLowerCase() === restriction.toLocaleLowerCase())) {
+      setErrorMessage('That allergy is already on your list.');
+      return;
+    }
+
+    setErrorMessage('');
+    setOtherRestrictions((current) => [...current, restriction]);
+    setOtherRestrictionInput('');
+  };
+
+  const toggleOtherRestrictions = () => {
+    setIsOtherEntryOpen((isOpen) => {
+      if (isOpen) {
+        setOtherRestrictions([]);
+        setOtherRestrictionInput('');
+      }
+      return !isOpen;
+    });
+  };
+
+  const continueToBudget = async () => {
+    setIsSaving(true);
+    setErrorMessage('');
+    try {
+      await fetchJson('/api/brain/dietary-restrictions', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          dietary_restrictions: selectedRestrictions,
+          other_dietary_restrictions: otherRestrictions,
+        }),
+      });
+      navigate('/budget');
+    } catch (error) {
+      console.error('[frontend] could not save dietary restrictions', error);
+      setErrorMessage('Could not save your choices. Please try again.');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <>
+      <header className="top-header">
+        <div><strong>Budget Buddies</strong></div>
+      </header>
+      <main className="page-wrapper dietary-page-wrapper">
+        <section className="budget-card dietary-card" aria-labelledby="dietary-title">
+          <h1 className="dietary-title" id="dietary-title">Dietary restrictions</h1>
+          {isLoading ? (
+            <p className="dietary-status" role="status">Loading dietary options…</p>
+          ) : errorMessage && options.length === 0 ? (
+            <div className="dietary-load-error">
+              <p className="dietary-error" role="alert">{errorMessage}</p>
+              <button className="dietary-retry-button" type="button" onClick={() => setLoadAttempt((attempt) => attempt + 1)}>
+                Retry
+              </button>
+            </div>
+          ) : (
+            <>
+              <div className="dietary-choice-grid" aria-label="Common food allergens">
+                {options.map((option) => {
+                  const isSelected = selectedRestrictions.includes(option.id);
+                  return (
+                    <button
+                      className={`dietary-choice${isSelected ? ' is-selected' : ''}`}
+                      type="button"
+                      key={option.id}
+                      aria-pressed={isSelected}
+                      onClick={() => toggleRestriction(option.id)}
+                    >
+                      {option.label}
+                    </button>
+                  );
+                })}
+                <button
+                  className={`dietary-choice dietary-other-choice${isOtherEntryOpen ? ' is-selected' : ''}`}
+                  type="button"
+                  aria-expanded={isOtherEntryOpen}
+                  aria-pressed={isOtherEntryOpen}
+                  onClick={toggleOtherRestrictions}
+                >
+                  Others
+                </button>
+              </div>
+              {isOtherEntryOpen && (
+                <div className="other-allergy-entry">
+                  <label htmlFor="other-allergy-input">Add another allergy</label>
+                  <div className="other-allergy-input-row">
+                    <input
+                      id="other-allergy-input"
+                      type="text"
+                      maxLength={80}
+                      value={otherRestrictionInput}
+                      onChange={(event) => setOtherRestrictionInput(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === 'Enter') {
+                          event.preventDefault();
+                          addOtherRestriction();
+                        }
+                      }}
+                      placeholder="Enter allergy"
+                    />
+                    <button type="button" onClick={addOtherRestriction} disabled={!otherRestrictionInput.trim()}>
+                      Add
+                    </button>
+                  </div>
+                  {otherRestrictions.length > 0 && (
+                    <ul className="other-allergy-list" aria-label="Added allergies">
+                      {otherRestrictions.map((restriction) => (
+                        <li key={restriction}>
+                          <span>{restriction}</span>
+                          <button
+                            type="button"
+                            aria-label={`Remove ${restriction}`}
+                            onClick={() => setOtherRestrictions((current) => current.filter((item) => item !== restriction))}
+                          >
+                            ×
+                          </button>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+        </section>
+        {errorMessage && options.length > 0 && <p className="dietary-error" role="alert">{errorMessage}</p>}
+        <button
+          className="budget-btn dietary-continue-btn"
+          type="button"
+          disabled={isLoading || options.length === 0 || isSaving}
+          onClick={continueToBudget}
+        >
+          {isSaving ? 'Saving…' : selectedRestrictions.length === 0 && !isOtherEntryOpen ? 'Skip' : 'Continue'}
+        </button>
       </main>
     </>
   );
@@ -743,6 +959,7 @@ export default function App() {
       <Router>
         <Routes>
           <Route path="/" element={<StartPage />} />
+          <Route path="/dietary-restrictions" element={<DietaryRestrictionsPage />} />
           <Route path="/budget" element={<BudgetPage />} />
           <Route path="/cart" element={<CartDashboard />} />
         </Routes>
