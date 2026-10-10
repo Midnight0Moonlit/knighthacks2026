@@ -70,6 +70,29 @@ def set_budget():
     return jsonify(brain.get_all())
 
 
+@app.post("/api/brain/dietary-restrictions")
+def set_dietary_restrictions():
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        return jsonify({"error": "A JSON object with dietary_restrictions is required."}), 400
+
+    restrictions = payload.get("dietary_restrictions")
+    if not isinstance(restrictions, list):
+        return jsonify({"error": "dietary_restrictions must be a list."}), 400
+
+    other_restrictions = payload.get("other_dietary_restrictions", [])
+    if not isinstance(other_restrictions, list):
+        return jsonify({"error": "other_dietary_restrictions must be a list."}), 400
+
+    try:
+        saved_preferences = brain.set_dietary_preferences(restrictions, other_restrictions)
+    except ValueError as error:
+        return jsonify({"error": str(error)}), 400
+
+    print(f"[app] dietary restrictions updated: {saved_preferences}")
+    return jsonify(brain.get_all())
+
+
 @app.get("/api/macros")
 def macros():
     pending_items = brain.get_pending_items()
