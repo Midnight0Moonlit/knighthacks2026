@@ -10,18 +10,27 @@ from core.inventory import CartInventory
 from core.cart_tracker import CartTracker
 
 def parse_args():
-    parser = argparse.ArgumentParser(description="Smart Shopping Cart - Dynamic ADD/REMOVE Tracker")
-    parser.add_argument("--camera", type=int, default=0, help="Camera index (default: 0; the other USB index is tried automatically)")
-    parser.add_argument("--model", type=str, default="yolov8n.pt", help="YOLO model weight file (Nano default: yolov8n.pt)")
-    parser.add_argument("--imgsz", type=int, default=320, help="Inference image size (default: 320 for Jetson Nano)")
-    parser.add_argument("--max-fps", type=float, default=5.0, help="Maximum inference rate (default: 5 FPS for Jetson Nano)")
-    parser.add_argument("--conf", type=float, default=0.28, help="Detection confidence threshold")
+    parser = argparse.ArgumentParser(description="Smart Shopping Cart - High-Speed ADD/REMOVE Tracker")
+    parser.add_argument("--camera", type=int, default=1, help="Camera index (default: 1 for USB webcam)")
+    parser.add_argument("--model", type=str, default="yolov8n.pt", help="YOLO model weight file (default: yolov8n.pt for high FPS)")
+    parser.add_argument("--conf", type=float, default=0.22, help="Detection confidence threshold")
     return parser.parse_args()
+
+def open_camera(index):
+    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
+    if not cap.isOpened():
+        cap = cv2.VideoCapture(index)
+
+    # Prevent OS buffer build-up / frame lag
+    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+    return cap
 
 def main():
     args = parse_args()
 
-    print(f"[*] Initializing YOLO Model: {args.model}...")
+    print(f"[*] Initializing YOLO Model: {args.model} (High-Speed Nano)...")
     model = YOLO(args.model)
 
     # Pre-trained COCO classes: bottle (39), banana (46), apple (47)
@@ -29,12 +38,12 @@ def main():
     target_class_ids = [
         cls_id for cls_id, name in model.names.items() if name.lower() in target_names
     ]
-    print(f"[*] Active target whitelist: {[model.names[i] for i in target_class_ids]} (IDs: {target_class_ids})")
+    print(f"[*] Target classes: {[model.names[i] for i in target_class_ids]} (IDs: {target_class_ids})")
 
     # Initialize Cart Polygon Zone
     zone = CartPolygonZone()
 
-    # Initialize In-Memory Inventory and State Machine Tracker
+    # Initialize Inventory and Tracker
     inventory = CartInventory()
     tracker = CartTracker(inventory=inventory)
 
@@ -47,17 +56,28 @@ def main():
         print("[!] Error: No available camera found.")
         sys.exit(1)
 
-    window_name = "Smart Shopping Cart [Live Tracking] - Press 'c'=Cam, 'r'=Reset Tally, 'q'=Quit"
+    window_name = "Smart Cart Tracker - Drag Corners | 's'=Save | 'r'=Reset | 'q'=Quit"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
+
+    # Enable interactive mouse dragging directly in the main app
+    param_dict = {"w": 1280, "h": 720}
+    def on_mouse(event, x, y, flags, param):
+        w = param_dict.get("w", 1280)
+        h = param_dict.get("h", 720)
+        zone.handle_mouse_event(event, x, y, flags, None, w, h)
+
+    cv2.setMouseCallback(window_name, on_mouse)
 
     print("\n" + "=" * 65)
     print(" Smart Shopping Cart System Running!")
     print(" Targets: Apple, Banana, Water Bottle")
     print(" Controls:")
-    print("   [r]       : Reset cart inventory tally to 0")
-    print("   [c]       : Switch camera (0 <-> 1)")
-    print("   [+] / [-] : Adjust detection confidence")
-    print("   [q] / ESC : Quit")
+    print("   * DRAG CORNERS : Adjust 4 green dots to fit cart entrance rim")
+    print("   [s]            : SAVE corner calibration to config file")
+    print("   [r]            : Reset cart inventory tally to 0")
+    print("   [c]            : Switch camera (0 <-> 1)")
+    print("   [+] / [-]      : Adjust detection confidence")
+    print("   [q] / ESC      : Quit")
     print("=" * 65 + "\n")
 
     current_camera = args.camera
@@ -65,13 +85,17 @@ def main():
     consecutive_fail_count = 0
     next_inference = 0.0
 
+    fps = 0.0
+    frame_count = 0
+    start_time = time.time()
+
     try:
         while True:
             ret, frame = cap.read()
             if not ret or frame is None:
                 consecutive_fail_count += 1
                 if consecutive_fail_count >= 5:
-                    print("[!] Frame read timeout. Re-opening camera stream...")
+                    print("[!] Camera frame read timeout. Re-opening stream...")
                     cap.release()
                     time.sleep(0.5)
                     cap = open_camera(current_camera)
@@ -87,11 +111,12 @@ def main():
                 cv2.waitKey(1)
                 continue
             next_inference = now + (1.0 / args.max_fps if args.max_fps > 0 else 0)
+            param_dict["w"] = w
+            param_dict["h"] = h
 
-            # Run YOLO with ByteTrack enabled for persistent ID assignment
-            results = model.track(
+            # 1. Fast YOLO prediction (instantaneous, no ByteTrack delay)
+            results = model.predict(
                 frame,
-                persist=True,
                 classes=target_class_ids,
                 conf=conf_threshold,
                 imgsz=args.imgsz,
@@ -99,49 +124,63 @@ def main():
                 verbose=False,
             )
 
-            # Draw calibrated polygon zone
+            # 2. Extract raw detections
+            raw_detections = []
+            for box in results[0].boxes:
+                xyxy = box.xyxy[0].cpu().numpy()
+                cls_id = int(box.cls[0].item())
+                conf = float(box.conf[0].item())
+                name = model.names[cls_id]
+
+                x1, y1, x2, y2 = map(int, xyxy)
+                cx = int((x1 + x2) / 2)
+                cy = int((y1 + y2) / 2)
+
+                raw_detections.append({
+                    "name": name,
+                    "conf": conf,
+                    "box": [x1, y1, x2, y2],
+                    "centroid": (cx, cy),
+                })
+
+            # 3. Draw polygon with draggable handles
             annotated_frame = frame.copy()
-            annotated_frame = zone.draw(annotated_frame, show_handles=False)
+            annotated_frame = zone.draw(annotated_frame, show_handles=True)
 
-            # Parse tracked detections
-            detections = []
-            if results[0].boxes and results[0].boxes.id is not None:
-                boxes = results[0].boxes.xyxy.cpu().numpy()
-                track_ids = results[0].boxes.id.int().cpu().tolist()
-                clss = results[0].boxes.cls.int().cpu().tolist()
-                confs = results[0].boxes.conf.cpu().tolist()
+            # 4. Update centroid tracker and state machine
+            tracked_detections = tracker.process_frame(raw_detections, zone, w, h)
 
-                for box, track_id, cls_id, conf in zip(boxes, track_ids, clss, confs):
-                    x1, y1, x2, y2 = map(int, box)
-                    cx = int((x1 + x2) / 2)
-                    cy = int((y1 + y2) / 2)
-                    name = model.names[cls_id]
+            # 5. Draw HUD, badges, trails, and inventory card
+            annotated_frame = tracker.draw_hud(annotated_frame, tracked_detections, zone)
 
-                    detections.append({
-                        "track_id": track_id,
-                        "name": name,
-                        "conf": conf,
-                        "box": [x1, y1, x2, y2],
-                        "centroid": (cx, cy),
-                    })
+            # Calculate live FPS
+            frame_count += 1
+            elapsed = time.time() - start_time
+            if elapsed >= 1.0:
+                fps = frame_count / elapsed
+                frame_count = 0
+                start_time = time.time()
 
-                    # Draw item box
-                    cv2.rectangle(annotated_frame, (x1, y1), (x2, y2), (255, 200, 0), 2)
-                    cv2.circle(annotated_frame, (cx, cy), 5, (0, 255, 255), -1)
-
-            # Process state machine & inventory updates
-            tracker.process_frame_tracks(detections, zone, w, h)
-
-            # Draw trails, status badges, and live inventory card
-            annotated_frame = tracker.draw_tracks_and_hud(annotated_frame, detections, zone)
+            # FPS / Cam Overlay
+            cv2.putText(
+                annotated_frame,
+                f"FPS: {fps:.1f} | Conf: {conf_threshold:.2f} | Cam: {current_camera}",
+                (20, h - 20),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.55,
+                (0, 255, 200),
+                1,
+                cv2.LINE_AA,
+            )
 
             cv2.imshow(window_name, annotated_frame)
 
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
                 break
+            elif key == ord('s'):
+                zone.save_config()
             elif key == ord('r'):
-                # Reset tally
                 inventory.tally = {"apple": 0, "banana": 0, "bottle": 0}
                 print("\n[*] Cart inventory tally reset to 0.")
             elif key == ord('c'):
