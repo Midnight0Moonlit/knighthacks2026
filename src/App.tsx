@@ -5,22 +5,27 @@ import './App.css';
 const CATALOG = {
   apple: { id: 'apple', name: '🍎 Apple', price: 1.29 },
   banana: { id: 'banana', name: '🍌 Banana', price: 0.59 },
-  water: { id: 'water', name: '🍾 Bottled Water', price: 1.99 },
+  water: { id: 'water', name: '💦 Bottled Water', price: 1.99 },
 };
 
 type ItemKey = keyof typeof CATALOG;
-type LogEntry = { id: number; text: string; type: 'vision' | 'manual' | 'system' };
+
+const MACRO_BREAKDOWN = [
+  { name: 'Protein', percentage: 30, className: 'protein' },
+  { name: 'Carbs', percentage: 50, className: 'carbs' },
+  { name: 'Fat', percentage: 20, className: 'fat' },
+];
 
 function StartPage() {
   const navigate = useNavigate();
   return (
     <>
       <header className="top-header">
-        <div><strong>SmartCart AI</strong> • Powered by Jetson</div>
+        <div><strong>Budget Buddies</strong> • Powered by Jetson</div>
         <div className="status-badge"><div className="dot green"></div>Systems Connected</div>
       </header>
       <main className="page-wrapper">
-        <h1 className="title-text">Welcome to SmartCart AI</h1>
+        <h1 className="title-text">Welcome to Budget Buddies!</h1>
         <h2 className="subtitle-text">Ready to start your shopping trip?</h2>
         <button className="giant-start-btn" onClick={() => navigate('/budget')}>START ➔</button>
         <p className="helper-text">Tap here to set your budget and begin.</p>
@@ -40,7 +45,7 @@ function BudgetPage() {
   return (
     <>
       <header className="top-header">
-        <div><strong>SmartCart AI</strong> • Powered by Jetson</div>
+        <div><strong>Budget Buddies</strong> • Powered by Jetson</div>
         <div className="status-badge"><div className="dot green"></div>Systems Connected</div>
       </header>
       <main className="page-wrapper">
@@ -63,37 +68,28 @@ function CartDashboard() {
   const budget = location.state?.budget || 0;
   
   const [inventory, setInventory] = useState<Record<ItemKey, number>>({ apple: 0, banana: 0, water: 0 });
-  const [totals, setTotals] = useState({ subtotal: 0, tax: 0, total: 0 });
   const [wsStatus, setWsStatus] = useState<'connected' | 'offline' | 'reconnecting'>('offline');
-  const [logs, setLogs] = useState<LogEntry[]>([{ id: 0, text: '[SYSTEM] Initialized', type: 'system' }]);
   const [pulsingItem, setPulsingItem] = useState<string | null>(null);
   
   const wsRef = useRef<WebSocket | null>(null);
 
-  const addLog = (text: string, type: 'vision' | 'manual' | 'system') => {
-    setLogs((prev) => [{ id: Date.now(), text, type }, ...prev].slice(0, 5));
-  };
-
   const connectWebSocket = () => {
-    const wsUrl = `ws://${window.location.host}/ws/cart`;
+    const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const wsUrl = `${wsProtocol}//${window.location.host}/ws/cart`;
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
 
     ws.onopen = () => {
       setWsStatus('connected');
-      addLog('[SYSTEM] WebSocket Connected', 'system');
     };
 
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data);
         if (data.inventory) setInventory(data.inventory);
-        if (data.total !== undefined) setTotals({ subtotal: data.subtotal, tax: data.tax, total: data.total });
-        
         if (data.action === 'VISION_ADD' && data.item) {
           setPulsingItem(data.item);
           setTimeout(() => setPulsingItem(null), 500);
-          addLog(`[VISION] Added ${CATALOG[data.item as ItemKey].name}`, 'vision');
         }
       } catch (err) {
         console.error("Failed to parse WS message", err);
@@ -102,7 +98,6 @@ function CartDashboard() {
 
     ws.onclose = () => {
       setWsStatus('reconnecting');
-      addLog('[SYSTEM] Connection lost. Retrying...', 'system');
       setTimeout(connectWebSocket, 2000);
     };
 
@@ -117,15 +112,12 @@ function CartDashboard() {
   const sendAction = (action: string, item?: ItemKey) => {
     if (action === 'MANUAL_ADD' && item) {
       setInventory(prev => ({ ...prev, [item]: prev[item] + 1 }));
-      addLog(`[MANUAL] Added ${CATALOG[item].name}`, 'manual');
     }
     if (action === 'MANUAL_REMOVE' && item && inventory[item] > 0) {
       setInventory(prev => ({ ...prev, [item]: prev[item] - 1 }));
-      addLog(`[MANUAL] Removed ${CATALOG[item].name}`, 'manual');
     }
     if (action === 'RESET') {
       setInventory({ apple: 0, banana: 0, water: 0 });
-      addLog('[SYSTEM] Cart Reset', 'system');
     }
 
     if (wsRef.current?.readyState === WebSocket.OPEN) {
@@ -143,8 +135,8 @@ function CartDashboard() {
 
   return (
     <>
-      <header className="top-header dark-header">
-        <div><strong>Smart Cart Retrofit</strong></div>
+      <header className="top-header">
+        <div><strong>Budget Buddies</strong></div>
         <div className="status-badge">
           <div className={`dot ${wsStatus === 'connected' ? 'green' : wsStatus === 'reconnecting' ? 'yellow' : 'red'}`}></div>
           {wsStatus === 'connected' ? 'Live' : wsStatus === 'reconnecting' ? 'Reconnecting...' : 'Offline'}
@@ -163,18 +155,18 @@ function CartDashboard() {
 
               return (
                 <div key={key} className={`catalog-row ${isPulsing ? 'pulse-anim' : ''}`}>
-                  <div style={{ flex: 1 }}>
+                  <div className="catalog-info">
                     <strong>{item.name}</strong>
-                    <div style={{ fontSize: '1.2rem', color: '#7f8c8d' }}>${item.price.toFixed(2)}</div>
+                    <div className="item-price">${item.price.toFixed(2)}</div>
                   </div>
                   
                   <div className="controls">
                     <button className="touch-btn btn-minus" onClick={() => sendAction('MANUAL_REMOVE', key)}>–</button>
-                    <span style={{ fontSize: '2rem', width: '40px', textAlign: 'center' }}>{qty}</span>
+                    <span className="item-quantity">{qty}</span>
                     <button className="touch-btn btn-plus" onClick={() => sendAction('MANUAL_ADD', key)}>+</button>
                   </div>
                   
-                  <div style={{ width: '100px', textAlign: 'right', fontWeight: 'bold' }}>
+                  <div className="line-total">
                     ${(item.price * qty).toFixed(2)}
                   </div>
                 </div>
@@ -218,13 +210,20 @@ function CartDashboard() {
             <button className="checkout-btn" onClick={() => alert(`Checking out total: $${currentTotal.toFixed(2)}`)}>Checkout</button>
           </div>
 
-          <div className="activity-log">
-            <div style={{ borderBottom: '1px solid #555', paddingBottom: '0.5rem', marginBottom: '0.5rem' }}>ACTIVITY LOG</div>
-            {logs.map((log) => (
-              <div key={log.id} className={`log-entry log-${log.type}`}>
-                {log.text}
-              </div>
-            ))}
+          <div className="nutrition-card">
+            <h2 className="nutrition-title">Macro Breakdown</h2>
+            <div
+              className="macro-pie-chart"
+              role="img"
+              aria-label="Macro breakdown: Protein 30%, Carbs 50%, Fat 20%."
+            >
+              {MACRO_BREAKDOWN.map((macro) => (
+                <span key={macro.name} className={`macro-label macro-label-${macro.className}`}>
+                  <strong>{macro.name}</strong>
+                  <span>{macro.percentage}%</span>
+                </span>
+              ))}
+            </div>
           </div>
         </div>
       </main>

@@ -1,9 +1,8 @@
-/* Global Reset & iPad Viewport Lock */
+/* Global Reset */
 * {
   box-sizing: border-box;
   margin: 0;
   padding: 0;
-  user-select: none;
 }
 
 body {
@@ -13,12 +12,18 @@ body {
 }
 
 .ipad-viewport {
-  width: 100dvw;
-  height: 100dvh;
-  overflow: hidden;
+  width: 100%;
+  min-height: 100vh;
+  min-height: 100dvh;
+  overflow-x: hidden;
   touch-action: manipulation;
   display: flex;
   flex-direction: column;
+  padding:
+    env(safe-area-inset-top)
+    env(safe-area-inset-right)
+    env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
 }
 
 /* Header */
@@ -37,6 +42,7 @@ body {
 .page-wrapper {
   flex: 1; display: flex; flex-direction: column;
   justify-content: center; align-items: center; text-align: center;
+  padding: 2rem;
 }
 .title-text { font-size: 3rem; color: #2c3e50; margin-bottom: 0.5rem; }
 .subtitle-text { font-size: 1.5rem; color: #34495e; font-weight: 400; margin-bottom: 3rem; }
@@ -65,17 +71,21 @@ body {
 }
 
 /* Left Column: Catalog & Itemized Summary */
-.catalog-panel { background: white; border-radius: 1rem; padding: 1.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.05); display: flex; flex-direction: column; }
-.catalog-items { flex: 1; overflow-y: auto; }
+.catalog-panel { background: white; border-radius: 1rem; padding: 1.5rem; box-shadow: 0 4px 10px rgba(0,0,0,0.05); display: flex; flex-direction: column; min-width: 0; }
+.catalog-items { flex: 1; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; }
 .catalog-row {
   display: flex; justify-content: space-between; align-items: center;
   padding: 1rem 0; border-bottom: 1px solid #eee; font-size: 1.5rem;
 }
 .controls { display: flex; align-items: center; gap: 1.5rem; }
+.catalog-info { flex: 1; min-width: 0; }
+.item-price { font-size: 1.2rem; color: #7f8c8d; }
+.item-quantity { font-size: 2rem; width: 40px; text-align: center; }
+.line-total { width: 100px; text-align: right; font-weight: bold; }
 
 /* 48x48 Touch Targets (Made slightly larger for tablet ease) */
 .touch-btn {
-  width: 56px; height: 56px; font-size: 2rem; font-weight: bold;
+  width: 56px; height: 56px; min-width: 48px; min-height: 48px; font-size: 2rem; font-weight: bold;
   border: none; border-radius: 0.5rem; cursor: pointer;
   display: flex; justify-content: center; align-items: center;
 }
@@ -110,11 +120,61 @@ body {
 .checkout-btn { background-color: #0984e3; color: white; width: 100%; font-size: 2rem; padding: 1.5rem; border: none; border-radius: 1rem; cursor: pointer; }
 .reset-btn { background: #e74c3c; color: white; border: none; padding: 0.5rem 1rem; border-radius: 0.5rem; font-weight: bold; font-size: 1rem; }
 
-/* Activity Log */
-.activity-log { background: #2d3436; color: white; padding: 1rem; border-radius: 1rem; flex: 1; overflow: hidden; font-family: monospace; font-size: 1.1rem; }
-.log-entry { padding: 0.5rem; margin-bottom: 0.25rem; border-radius: 0.25rem; }
-.log-vision { color: #55efc4; }
-.log-manual { color: #ffeaa7; }
+/* Macro Breakdown */
+.nutrition-card {
+  background: white;
+  border-radius: 1rem;
+  padding: 1.5rem;
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.05);
+}
+.nutrition-title {
+  color: #2c3e50;
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+  text-align: center;
+}
+.macro-pie-chart {
+  position: relative;
+  width: min(220px, 100%);
+  aspect-ratio: 1;
+  margin: 0 auto 1.25rem;
+  border-radius: 50%;
+  background: conic-gradient(
+    #6c5ce7 0% 30%,
+    #00b894 30% 80%,
+    #fdcb6e 80% 100%
+  );
+}
+.macro-label {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: white;
+  font-size: 0.85rem;
+  font-weight: bold;
+  line-height: 1.2;
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  transform: translate(-50%, -50%);
+}
+.macro-label-protein {
+  top: 64.7%;
+  left: 70.2%;
+}
+.macro-label-carbs {
+  top: 26.2%;
+  left: 42.3%;
+  color: #123d32;
+  text-shadow: none;
+}
+.macro-label-fat {
+  top: 64.7%;
+  left: 29.8%;
+  color: #4b3b00;
+  text-shadow: none;
+}
 
 /* WebSocket Status */
 .status-badge { display: flex; align-items: center; gap: 0.5rem; }
@@ -130,3 +190,101 @@ body {
   100% { background-color: transparent; }
 }
 .pulse-anim { animation: pulseGreen 0.5s ease-out; }
+
+@media (max-width: 900px) {
+  .dashboard {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    padding: 1rem;
+  }
+
+  .catalog-panel {
+    min-height: 300px;
+  }
+
+  .catalog-items {
+    max-height: min(45vh, 420px);
+  }
+
+  .receipt-panel {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: stretch;
+  }
+
+  .nutrition-card { min-height: 200px; }
+}
+
+@media (max-width: 600px) {
+  .top-header {
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    padding: 1rem;
+    font-size: 1rem;
+  }
+
+  .page-wrapper {
+    padding: 1.5rem 1rem;
+  }
+
+  .title-text {
+    font-size: 2rem;
+  }
+
+  .subtitle-text {
+    font-size: 1.2rem;
+    margin-bottom: 2rem;
+  }
+
+  .giant-start-btn {
+    font-size: 3rem;
+    padding: 1rem 2rem;
+  }
+
+  .budget-input-wrapper,
+  .budget-input {
+    font-size: 3.5rem;
+  }
+
+  .budget-input {
+    width: 190px;
+  }
+
+  .dashboard {
+    padding: 0.75rem;
+  }
+
+  .catalog-panel {
+    padding: 1rem;
+  }
+
+  .catalog-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 0.5rem;
+    font-size: 1.15rem;
+  }
+
+  .controls {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+    gap: 0.5rem;
+  }
+
+  .line-total {
+    width: auto;
+    text-align: left;
+  }
+
+  .receipt-panel {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .receipt-card {
+    padding: 1.25rem;
+  }
+
+  .receipt-total {
+    font-size: 2rem;
+  }
+}
