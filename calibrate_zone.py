@@ -5,19 +5,16 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 from vision.zone import CartPolygonZone
+from vision.camera import open_camera, open_preferred_camera
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Shopping Cart 4-Corner Polygon Zone & Inside/Outside Tracker")
-    parser.add_argument("--camera", type=int, default=1, help="Camera index (default: 1 for external USB webcam)")
-    parser.add_argument("--model", type=str, default="yolov8s.pt", help="YOLO model path")
+    parser.add_argument("--camera", type=int, default=0, help="Camera index (default: 0; the other USB index is tried automatically)")
+    parser.add_argument("--model", type=str, default="yolov8n.pt", help="YOLO model path (Nano default: yolov8n.pt)")
     parser.add_argument("--conf", type=float, default=0.28, help="Detection confidence threshold")
+    parser.add_argument("--imgsz", type=int, default=320, help="Inference image size (default: 320 for Jetson Nano)")
+    parser.add_argument("--max-fps", type=float, default=5.0, help="Maximum inference rate (default: 5 FPS for Jetson Nano)")
     return parser.parse_args()
-
-def open_camera(index):
-    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(index)
-    return cap
 
 def main():
     args = parse_args()
@@ -33,11 +30,9 @@ def main():
     print(f"[*] Target classes: {[model.names[i] for i in target_class_ids]} (IDs: {target_class_ids})")
 
     print(f"[*] Opening Camera {args.camera}...")
-    cap = open_camera(args.camera)
-    if not cap.isOpened():
-        print(f"[!] Camera {args.camera} unavailable, falling back to 0...")
-        cap = open_camera(0)
-        args.camera = 0
+    cap, actual_camera = open_preferred_camera(args.camera)
+    if actual_camera is not None:
+        args.camera = actual_camera
 
     if not cap.isOpened():
         print("[!] Error: No available camera found.")
@@ -74,6 +69,7 @@ def main():
 
     current_camera = args.camera
     conf_threshold = args.conf
+    next_inference = 0.0
 
     try:
         while True:
@@ -85,13 +81,20 @@ def main():
             h, w = frame.shape[:2]
             param_dict["w"] = w
             param_dict["h"] = h
+            now = time.monotonic()
+            if now < next_inference:
+                cv2.imshow(window_name, frame)
+                cv2.waitKey(1)
+                continue
+            next_inference = now + (1.0 / args.max_fps if args.max_fps > 0 else 0)
 
             # Run YOLO detection
             results = model.predict(
                 frame,
                 classes=target_class_ids,
                 conf=conf_threshold,
-                imgsz=640,
+                imgsz=args.imgsz,
+                max_det=10,
                 verbose=False,
             )
 
@@ -191,9 +194,16 @@ def main():
             elif key == ord('r'):
                 zone.reset_defaults()
             elif key == ord('c'):
-                current_camera = 0 if current_camera == 1 else 1
+                new_camera = 0 if current_camera == 1 else 1
                 cap.release()
-                cap = open_camera(current_camera)
+                new_cap = open_camera(new_camera)
+                if new_cap.isOpened():
+                    cap = new_cap
+                    current_camera = new_camera
+                else:
+                    new_cap.release()
+                    cap = open_camera(current_camera)
+                    print(f"[!] Could not open camera {new_camera}; keeping camera {current_camera}.")
             elif key in [ord('+'), ord('=')]:
                 conf_threshold = min(0.95, round(conf_threshold + 0.05, 2))
                 print(f"[*] Conf: {conf_threshold}")

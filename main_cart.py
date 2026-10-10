@@ -3,6 +3,7 @@ import sys
 import time
 import cv2
 from ultralytics import YOLO
+from vision.camera import open_camera, open_preferred_camera
 
 from vision.zone import CartPolygonZone
 from core.inventory import CartInventory
@@ -10,22 +11,12 @@ from core.cart_tracker import CartTracker
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Smart Shopping Cart - Dynamic ADD/REMOVE Tracker")
-    parser.add_argument("--camera", type=int, default=1, help="Camera index (default: 1 for USB webcam)")
-    parser.add_argument("--model", type=str, default="yolov8s.pt", help="YOLO model weight file")
+    parser.add_argument("--camera", type=int, default=0, help="Camera index (default: 0; the other USB index is tried automatically)")
+    parser.add_argument("--model", type=str, default="yolov8n.pt", help="YOLO model weight file (Nano default: yolov8n.pt)")
+    parser.add_argument("--imgsz", type=int, default=320, help="Inference image size (default: 320 for Jetson Nano)")
+    parser.add_argument("--max-fps", type=float, default=5.0, help="Maximum inference rate (default: 5 FPS for Jetson Nano)")
     parser.add_argument("--conf", type=float, default=0.28, help="Detection confidence threshold")
     return parser.parse_args()
-
-def open_camera(index):
-    # Use DirectShow backend on Windows
-    cap = cv2.VideoCapture(index, cv2.CAP_DSHOW)
-    if not cap.isOpened():
-        cap = cv2.VideoCapture(index)
-
-    # 1. Clear out internal OS driver buffer so it never builds up lag or overflows
-    cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-    cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
-    return cap
 
 def main():
     args = parse_args()
@@ -48,11 +39,9 @@ def main():
     tracker = CartTracker(inventory=inventory)
 
     print(f"[*] Opening Camera {args.camera}...")
-    cap = open_camera(args.camera)
-    if not cap.isOpened():
-        print(f"[!] Camera {args.camera} unavailable, falling back to 0...")
-        cap = open_camera(0)
-        args.camera = 0
+    cap, actual_camera = open_preferred_camera(args.camera)
+    if actual_camera is not None:
+        args.camera = actual_camera
 
     if not cap.isOpened():
         print("[!] Error: No available camera found.")
@@ -74,6 +63,7 @@ def main():
     current_camera = args.camera
     conf_threshold = args.conf
     consecutive_fail_count = 0
+    next_inference = 0.0
 
     try:
         while True:
@@ -92,6 +82,11 @@ def main():
 
             consecutive_fail_count = 0
             h, w = frame.shape[:2]
+            now = time.monotonic()
+            if now < next_inference:
+                cv2.waitKey(1)
+                continue
+            next_inference = now + (1.0 / args.max_fps if args.max_fps > 0 else 0)
 
             # Run YOLO with ByteTrack enabled for persistent ID assignment
             results = model.track(
@@ -99,7 +94,8 @@ def main():
                 persist=True,
                 classes=target_class_ids,
                 conf=conf_threshold,
-                imgsz=640,
+                imgsz=args.imgsz,
+                max_det=10,
                 verbose=False,
             )
 
@@ -149,9 +145,16 @@ def main():
                 inventory.tally = {"apple": 0, "banana": 0, "bottle": 0}
                 print("\n[*] Cart inventory tally reset to 0.")
             elif key == ord('c'):
-                current_camera = 0 if current_camera == 1 else 1
+                new_camera = 0 if current_camera == 1 else 1
                 cap.release()
-                cap = open_camera(current_camera)
+                new_cap = open_camera(new_camera)
+                if new_cap.isOpened():
+                    cap = new_cap
+                    current_camera = new_camera
+                else:
+                    new_cap.release()
+                    cap = open_camera(current_camera)
+                    print(f"[!] Could not open camera {new_camera}; keeping camera {current_camera}.")
             elif key in [ord('+'), ord('=')]:
                 conf_threshold = min(0.95, round(conf_threshold + 0.05, 2))
                 print(f"[*] Conf: {conf_threshold}")
