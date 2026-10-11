@@ -149,7 +149,10 @@ const buildInventoryFromStore = (foods: Record<string, unknown> = {}) => {
     const key = normalizeCatalogItemKey(itemName);
     const parsedQuantity = Number(quantity);
     if (key && Number.isFinite(parsedQuantity) && parsedQuantity > 0) {
-      base[key] += Math.floor(parsedQuantity);
+      const nextQuantity = base[key] + Math.floor(parsedQuantity);
+      base[key] = key === 'barbecue sauce' || key === 'buffalo sauce'
+        ? Math.min(nextQuantity, 1)
+        : nextQuantity;
     }
   }
   return base;
@@ -631,12 +634,12 @@ function CartDashboard() {
 
   useEffect(() => {
     console.log('[frontend] CartDashboard mounted');
-    void loadMockCameraInventory();
     const cameraInventoryPoller = window.setInterval(() => {
       void loadMockCameraInventory();
     }, 1000);
     fetchJson('/api/cart/entered', { method: 'POST' })
       .then(() => refreshBrainData())
+      .then(() => loadMockCameraInventory())
       .catch((error) => {
         console.error('[frontend] could not register cart entry', error);
         setMacroLoadStatus('error');
@@ -930,7 +933,9 @@ function CartDashboard() {
           ) : (
             <>
               <div className="catalog-items">
-                {(Object.keys(CATALOG) as ItemKey[]).map((key) => {
+                {(Object.keys(CATALOG) as ItemKey[])
+                  .filter((key) => (inventory[key] ?? 0) > 0)
+                  .map((key) => {
                   const item = CATALOG[key];
                   const qty = inventory[key] ?? 0;
                   const isPulsing = pulsingItem === key;
@@ -954,6 +959,9 @@ function CartDashboard() {
                     </div>
                   );
                 })}
+                {!Object.values(inventory).some((quantity) => quantity > 0) && (
+                  <p className="recipe-empty-state">Your shopping list is empty. Add an item to begin.</p>
+                )}
               </div>
 
               <div className="catalog-summary">
