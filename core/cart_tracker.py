@@ -127,14 +127,8 @@ class ObjectTrack:
         self.last_seen = time.time()
         self.frames_seen = 1
 
-        # Determine starting state. Objects first seen clearly inside the zone
-        # are already in the cart and must be counted immediately.
-        if initial_dist >= 20.0:
-            self.state = TrackState.IN_CART
-            self.committed = True
-        else:
-            self.state = TrackState.OUTSIDE
-            self.committed = False
+        self.state = TrackState.IN_CART
+        self.committed = True
 
     def update(self, centroid, dist, conf):
         self.centroids.append(centroid)
@@ -155,27 +149,35 @@ class CartTracker:
     def __init__(
         self,
         inventory,
-        entry_dist_threshold=20.0,   # pixels inside polygon to confirm ADD
-        exit_dist_threshold=-15.0,   # pixels outside polygon to confirm REMOVE
         disappearance_grace_seconds=3.0,
     ):
         self.inventory = inventory
-        self.entry_dist_threshold = entry_dist_threshold
-        self.exit_dist_threshold = exit_dist_threshold
         self.disappearance_grace_seconds = disappearance_grace_seconds
 
-        self.centroid_tracker = SimpleCentroidTracker(max_disappeared=10, max_distance=150)
+        self.centroid_tracker = SimpleCentroidTracker(max_disappeared=30, max_distance=150)
         self.tracks = {}  # track_id -> ObjectTrack
         self.missing_since = {}
         self.last_event_banner = None
         self.last_event_time = 0.0
 
-    def process_frame(self, raw_detections, polygon_zone, frame_width, frame_height):
+    def process_frame(self, raw_detections):
         """
         raw_detections: list of dicts [{'name': str, 'conf': float, 'box': [x1,y1,x2,y2], 'centroid': (cx, cy)}]
         """
         # 1. Update lightweight centroid tracker (instantly assigns track_ids)
         tracked_detections = self.centroid_tracker.update(raw_detections)
+
+        now = time.time()
+        for tid in list(self.missing_since):
+            if now - self.missing_since[tid] > self.disappearance_grace_seconds:
+                track = self.tracks.get(tid)
+                if track is not None:
+                    self.inventory.remove_item(track.class_name, track.track_id, track.latest_conf)
+                    self.last_event_banner = f"- REMOVED 1x {track.class_name.upper()}"
+                    self.last_event_time = now
+                    del self.tracks[tid]
+                self.missing_since.pop(tid, None)
+                self.centroid_tracker.deregister(tid)
 
         active_track_ids = set()
 
@@ -190,98 +192,25 @@ class CartTracker:
             active_track_ids.add(track_id)
             self.missing_since.pop(track_id, None)
 
-            # Compute signed pixel distance to polygon boundary
-            status, dist = polygon_zone.get_zone_status(cx, cy, frame_width, frame_height)
-            det["zone_status"] = status
-            det["zone_dist"] = dist
-
             if track_id not in self.tracks:
-                self.tracks[track_id] = ObjectTrack(track_id, name, (cx, cy), dist)
-                if self.tracks[track_id].state == TrackState.IN_CART:
-                    self.inventory.add_item(name, track_id, conf)
-                    self.last_event_banner = f"+ ADDED 1x {name.upper()}"
-                    self.last_event_time = time.time()
+                self.tracks[track_id] = ObjectTrack(track_id, name, (cx, cy), 0.0)
+                self.tracks[track_id].state = TrackState.IN_CART
+                self.tracks[track_id].committed = True
+                self.inventory.add_item(name, track_id, conf)
+                self.last_event_banner = f"+ ADDED 1x {name.upper()}"
+                self.last_event_time = now
             else:
-                self.tracks[track_id].update((cx, cy), dist, conf)
+                self.tracks[track_id].update((cx, cy), 0.0, conf)
 
-            track = self.tracks[track_id]
-
-            # --- State Machine Transitions ---
-            # 1. OUTSIDE -> ENTERING
-            if track.state == TrackState.OUTSIDE:
-                if dist > -10.0:  # crossed near the rim
-                    track.state = TrackState.ENTERING
-
-            # 2. ENTERING -> IN_CART (🔥 Trigger ADD)
-            if track.state == TrackState.ENTERING:
-                # Check if moving deeper into the cart basket
-                if dist >= self.entry_dist_threshold:
-                    track.state = TrackState.IN_CART
-                    track.committed = True
-                    # 1-Shot ADD Event
-                    self.inventory.add_item(track.class_name, track.track_id, track.latest_conf)
-                    self.last_event_banner = f"+ ADDED 1x {track.class_name.upper()}"
-                    self.last_event_time = time.time()
-                elif dist < self.exit_dist_threshold:
-                    # Aborted entry
-                    track.state = TrackState.OUTSIDE
-
-            # 3. IN_CART -> EXITING
-            elif track.state == TrackState.IN_CART:
-                if dist < 0:
-                    track.state = TrackState.EXITING
-
-            # 4. EXITING -> REMOVED (🔥 Trigger REMOVE)
-            elif track.state == TrackState.EXITING:
-                if dist <= self.exit_dist_threshold:
-                    track.state = TrackState.REMOVED
-                    # 1-Shot REMOVE Event
-                    self.inventory.remove_item(track.class_name, track.track_id, track.latest_conf)
-                    self.last_event_banner = f"- REMOVED 1x {track.class_name.upper()}"
-                    self.last_event_time = time.time()
-                elif dist >= self.entry_dist_threshold:
-                    # Dropped back in
-                    track.state = TrackState.IN_CART
-
-        now = time.time()
         for tid, track in self.tracks.items():
             if tid in active_track_ids:
                 continue
 
-            missing_since = self.missing_since.setdefault(tid, track.last_seen)
-            if now - missing_since <= self.disappearance_grace_seconds:
-                continue
-
-            if track.state in [TrackState.IN_CART, TrackState.EXITING]:
-                track.state = TrackState.REMOVED
-                self.inventory.remove_item(track.class_name, track.track_id, track.latest_conf)
-                self.last_event_banner = f"- REMOVED 1x {track.class_name.upper()}"
-                self.last_event_time = now
-
-        # If every tracked object has been missing beyond the grace period,
-        # publish a clean empty-cart state.
-        if (
-            not active_track_ids
-            and self.tracks
-            and all(
-                now - self.missing_since.setdefault(tid, track.last_seen)
-                > self.disappearance_grace_seconds
-                for tid, track in self.tracks.items()
-            )
-            and any(self.inventory.tally.values())
-        ):
-            self.inventory.reset()
-
-        # Clean stale tracks
-        for tid in list(self.tracks.keys()):
-            if tid not in active_track_ids and (now - self.tracks[tid].last_seen > 5.0):
-                if self.tracks[tid].state in [TrackState.OUTSIDE, TrackState.REMOVED]:
-                    del self.tracks[tid]
-                    self.missing_since.pop(tid, None)
+            self.missing_since.setdefault(tid, now)
 
         return tracked_detections
 
-    def draw_hud(self, frame, tracked_detections, polygon_zone):
+    def draw_hud(self, frame, tracked_detections):
         """Draws bounding boxes, inside/outside badges, trails, and fading event banners."""
         h, w = frame.shape[:2]
 
@@ -291,15 +220,7 @@ class CartTracker:
             conf = det["conf"]
             x1, y1, x2, y2 = det["box"]
             cx, cy = det["centroid"]
-            status = det.get("zone_status", "OUTSIDE")
-
-            # Status Colors
-            if status == "INSIDE":
-                tag_color = (0, 255, 0)      # Bright Green
-            elif status == "OUTSIDE":
-                tag_color = (0, 0, 255)      # Red
-            else:
-                tag_color = (0, 255, 255)    # Yellow border
+            tag_color = (0, 255, 0)
 
             # Draw Box & Centroid
             cv2.rectangle(frame, (x1, y1), (x2, y2), tag_color, 2)
@@ -307,7 +228,7 @@ class CartTracker:
             cv2.circle(frame, (cx, cy), 7, (255, 255, 255), 2)
 
             # Draw prominent badge above box
-            track_state = self.tracks[track_id].state if track_id in self.tracks else status
+            track_state = self.tracks[track_id].state if track_id in self.tracks else "VISIBLE"
             badge_text = f"#{track_id} {name.upper()} [{track_state}]"
             
             # Badge background pill
@@ -318,7 +239,7 @@ class CartTracker:
             by1 = max(0, y1 - bh - 4)
 
             cv2.rectangle(frame, (bx1, by1), (bx1 + bw, by1 + bh), tag_color, -1)
-            text_color = (0, 0, 0) if status == "INSIDE" or track_state == TrackState.ENTERING else (255, 255, 255)
+            text_color = (0, 0, 0)
             cv2.putText(
                 frame,
                 badge_text,

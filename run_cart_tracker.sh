@@ -22,7 +22,7 @@ else
     model="yolov8n.pt"
     echo "[!] YOLO11m TensorRT engine not found; using YOLOv8 PyTorch fallback: $model"
 fi
-confidence="${CONFIDENCE:-0.22}"
+confidence="${CONFIDENCE:-0.20}"
 imgsz="${IMGSZ:-640}"
 max_fps="${MAX_FPS:-5}"
 if [[ -z "$device" ]]; then

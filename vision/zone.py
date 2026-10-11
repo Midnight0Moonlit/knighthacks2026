@@ -49,48 +49,46 @@ class CartPolygonZone:
         else:
             return "ON_BORDER", dist
 
-    def draw(self, frame, show_handles=True):
+    def draw(self, frame, show_handles=True, show_zone=True):
         """Renders the semi-transparent polygon, border lines, and corner draggable handles."""
         h, w = frame.shape[:2]
         pts = self.get_pixel_corners(w, h)
 
-        # 1. Draw semi-transparent filled polygon
-        overlay = frame.copy()
-        # Cyan / Blue shade (255, 180, 0)
-        cv2.fillPoly(overlay, [pts], (255, 180, 0))
-        alpha = 0.25
-        cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
+        if show_zone:
+            # 1. Draw semi-transparent filled polygon
+            overlay = frame.copy()
+            cv2.fillPoly(overlay, [pts], (255, 180, 0))
+            alpha = 0.25
+            cv2.addWeighted(overlay, alpha, frame, 1 - alpha, 0, frame)
 
-        # 2. Draw solid boundary outline
-        cv2.polylines(frame, [pts], isClosed=True, color=(0, 255, 255), thickness=3)
+            # 2. Draw solid boundary outline
+            cv2.polylines(frame, [pts], isClosed=True, color=(0, 255, 255), thickness=3)
 
-        # Label the rims
-        p1, p2, p3, p4 = pts
-        # Far top rim
-        cv2.putText(
-            frame,
-            "FAR RIM (FRONT)",
-            (int((p1[0] + p2[0]) / 2) - 60, max(25, int((p1[1] + p2[1]) / 2) - 10)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 255),
-            1,
-            cv2.LINE_AA,
-        )
-        # Near bottom rim
-        cv2.putText(
-            frame,
-            "NEAR RIM (HANDLEBAR)",
-            (int((p4[0] + p3[0]) / 2) - 80, min(h - 15, int((p4[1] + p3[1]) / 2) + 22)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.5,
-            (0, 255, 255),
-            1,
-            cv2.LINE_AA,
-        )
+            # Label the rims
+            p1, p2, p3, p4 = pts
+            cv2.putText(
+                frame,
+                "FAR RIM (FRONT)",
+                (int((p1[0] + p2[0]) / 2) - 60, max(25, int((p1[1] + p2[1]) / 2) - 10)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
+            cv2.putText(
+                frame,
+                "NEAR RIM (HANDLEBAR)",
+                (int((p4[0] + p3[0]) / 2) - 80, min(h - 15, int((p4[1] + p3[1]) / 2) + 22)),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.5,
+                (0, 255, 255),
+                1,
+                cv2.LINE_AA,
+            )
 
         # 3. Draw corner handles for calibration
-        if show_handles:
+        if show_zone and show_handles:
             corner_labels = ["P1 (Top-L)", "P2 (Top-R)", "P3 (Btm-R)", "P4 (Btm-L)"]
             for i, (px, py) in enumerate(pts):
                 is_active = (i == self.selected_corner_idx)

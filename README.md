@@ -109,6 +109,9 @@ The cart tracker uses 640-pixel inference, 5 FPS, and
 GPU/TensorRT inference when the YOLO11m engine is available. Override them with
 `IMGSZ`, `MAX_FPS`, or `DEVICE` if needed.
 
+The cart tracker counts supported objects based on visibility anywhere in the
+camera view; it no longer uses a cart-opening zone or rectangle.
+
 ## YOLO11m TensorRT FP16 on Orin Nano
 
 The cart launcher prefers `models/yolo11m.engine` and keeps the verified
@@ -140,9 +143,9 @@ To use a different engine explicitly:
 MODEL_PATH=/path/to/model.engine DEVICE=0 ./run_cart_tracker.sh
 ```
 
-Objects already inside the configured zone when the tracker starts are counted
-immediately. Objects entering later are counted once when they cross into the
-zone, and removed once when they cross back out.
+Objects visible when the tracker starts are counted immediately. Each tracked
+object is counted once, and is removed only after it has been absent for more
+than three seconds.
 
 If a tracked object disappears, the tracker waits more than three seconds before
 removing it. A brief detection dropout therefore does not remove an item. When
