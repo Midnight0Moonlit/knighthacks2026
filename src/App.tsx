@@ -14,6 +14,25 @@ type ItemKey = keyof typeof CATALOG;
 type MacroKey = 'protein' | 'carbs' | 'fat';
 type DietaryRestrictionOption = { id: string; label: string };
 
+const CAMERA_ITEM_ALIASES: Record<string, ItemKey> = {
+  apple: 'apples',
+  apples: 'apples',
+  banana: 'bananas',
+  bananas: 'bananas',
+  bottle: 'water bottle',
+  bottles: 'water bottle',
+  water: 'water bottle',
+  'water bottle': 'water bottle',
+  'water bottles': 'water bottle',
+  beans: 'beans',
+  donuts: 'donuts',
+};
+
+const normalizeCatalogItemKey = (itemName: string): ItemKey | null => {
+  const normalizedName = itemName.trim().toLowerCase().replace(/[_-]+/g, ' ');
+  return CAMERA_ITEM_ALIASES[normalizedName] ?? null;
+};
+
 const RECIPE_PREVIEWS: {
   title: string;
   description: string;
@@ -96,6 +115,7 @@ const DEFAULT_MACRO_GOALS: MacroProgress[] = [
 ];
 
 const DEFAULT_GOALS: Record<MacroKey, number> = { protein: 120, carbs: 250, fat: 65 };
+const MOCK_CAMERA_INVENTORY_URL = '/mock_camera_inventory.json';
 
 const fetchJson = async (url: string, options?: RequestInit) => {
   console.log(`[frontend] fetch ${url} ${options ? 'with payload' : 'without payload'}`);
@@ -107,10 +127,14 @@ const fetchJson = async (url: string, options?: RequestInit) => {
   return response.json();
 };
 
-const buildInventoryFromStore = (foods: Record<string, number> = {}) => {
+const buildInventoryFromStore = (foods: Record<string, unknown> = {}) => {
   const base = { apples: 0, bananas: 0, beans: 0, donuts: 0, 'water bottle': 0 } as Record<ItemKey, number>;
-  for (const key of Object.keys(base) as ItemKey[]) {
-    base[key] = Number(foods[key] ?? 0);
+  for (const [itemName, quantity] of Object.entries(foods)) {
+    const key = normalizeCatalogItemKey(itemName);
+    const parsedQuantity = Number(quantity);
+    if (key && Number.isFinite(parsedQuantity) && parsedQuantity > 0) {
+      base[key] += Math.floor(parsedQuantity);
+    }
   }
   return base;
 };
@@ -475,12 +499,16 @@ function CartDashboard() {
     }
   };
 
-  const refreshBrainData = async () => {
+  const refreshBrainData = async (acceptEmptyInventory = false) => {
     try {
       const brainData = await fetchJson('/api/brain');
       const foodStore = brainData?.foods ?? {};
       console.log('[frontend] received brain data', brainData);
-      setInventory(buildInventoryFromStore(foodStore));
+      const backendInventory = buildInventoryFromStore(foodStore);
+      const hasBackendInventory = Object.values(backendInventory).some((quantity) => quantity > 0);
+      if (acceptEmptyInventory || hasBackendInventory) {
+        setInventory(backendInventory);
+      }
       const loadedBudget = Number(brainData?.budget ?? 0);
       setBudget(loadedBudget);
       setBudgetInput(String(loadedBudget));
@@ -493,6 +521,22 @@ function CartDashboard() {
     });
   };
 
+  const loadMockCameraInventory = async () => {
+    try {
+      const cameraInventory = await fetchJson(MOCK_CAMERA_INVENTORY_URL);
+      if (!cameraInventory || typeof cameraInventory !== 'object' || Array.isArray(cameraInventory)) {
+        throw new Error('Mock camera inventory must be a JSON object of item counts.');
+      }
+      const inventoryFromFixture = buildInventoryFromStore(cameraInventory);
+      if (!Object.values(inventoryFromFixture).some((quantity) => quantity > 0)) {
+        throw new Error('Mock camera inventory does not contain any recognized catalog items.');
+      }
+      setInventory(inventoryFromFixture);
+    } catch (error) {
+      console.error('[frontend] could not load mock camera inventory', error);
+    }
+  };
+
   const connectWebSocket = () => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsUrl = `${wsProtocol}//${window.location.host}/ws/cart`;
@@ -502,10 +546,19 @@ function CartDashboard() {
 
     ws.onmessage = (event) => {
       try {
-        const data = JSON.parse(event.data);
-        if (data.inventory) setInventory(buildInventoryFromStore(data.inventory));
-        if (data.action === 'VISION_ADD' && data.item) {
-          setPulsingItem(data.item);
+        const parsedMessage: unknown = JSON.parse(event.data);
+        if (!parsedMessage || typeof parsedMessage !== 'object' || Array.isArray(parsedMessage)) {
+          throw new Error('Camera message must be a JSON object.');
+        }
+        const data = parsedMessage as Record<string, unknown>;
+        const cameraInventory = data.inventory ?? data.cart_snapshot;
+        if (cameraInventory && typeof cameraInventory === 'object' && !Array.isArray(cameraInventory)) {
+          setInventory(buildInventoryFromStore(cameraInventory as Record<string, unknown>));
+        }
+        const isCameraAddition = data.action === 'VISION_ADD' || data.event === 'ADD';
+        const itemKey = typeof data.item === 'string' ? normalizeCatalogItemKey(data.item) : null;
+        if (isCameraAddition && itemKey) {
+          setPulsingItem(itemKey);
           setTimeout(() => setPulsingItem(null), 500);
         }
       } catch (err) {
@@ -518,6 +571,7 @@ function CartDashboard() {
 
   useEffect(() => {
     console.log('[frontend] CartDashboard mounted');
+    void loadMockCameraInventory();
     fetchJson('/api/cart/entered', { method: 'POST' })
       .then(() => refreshBrainData())
       .catch((error) => {
@@ -561,7 +615,7 @@ function CartDashboard() {
       wsRef.current.send(JSON.stringify({ action, item }));
     }
 
-    await refreshBrainData();
+    await refreshBrainData(true);
   };
 
   const saveSettings = async () => {
