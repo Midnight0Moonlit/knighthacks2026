@@ -73,6 +73,11 @@ class CartInventory:
             file.write("\n")
         os.replace(temporary_path, self.camera_inventory_path)
 
+    def reset(self):
+        """Clear the vision tally and publish the empty-cart state."""
+        self.tally = {item_name: 0 for item_name in self.tally}
+        self._save_camera_inventory()
+
     def _log_event(self, record):
         """Prints a clean, formatted audit log to the terminal console."""
         symbol = "[+] ADDED" if record["event"] == "ADD" else "[-] REMOVED"

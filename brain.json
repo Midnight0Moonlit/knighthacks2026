@@ -1,10 +1,14 @@
 {
   "foods": {
-    "apples": 1,
+    "apples": 0,
     "beans": 0,
     "bananas": 0,
     "donuts": 0,
-    "water bottle": 0
+    "water bottle": 0,
+    "frozen meal": 0,
+    "barbecue sauce": 0,
+    "wing sauce": 0,
+    "buffalo sauce": 0
   },
   "budget": 50.0,
   "nutrition": {
@@ -27,14 +31,33 @@
       "carbs": 31.0,
       "protein": 3.0,
       "fat": 14.0
+    },
+    "frozen meal": {
+      "carbs": 40.0,
+      "protein": 18.0,
+      "fat": 12.0
+    },
+    "buffalo sauce": {
+      "carbs": 0.0,
+      "protein": 0.0,
+      "fat": 0.0
+    },
+    "barbecue sauce": {
+      "carbs": 7.0,
+      "protein": 0.0,
+      "fat": 0.0
+    },
+    "water bottle": {
+      "carbs": 0.0,
+      "protein": 0.0,
+      "fat": 0.0
     }
   },
   "dietary_restrictions": [
-    "tree_nuts",
-    "peanuts"
+    "soybeans"
   ],
   "other_dietary_restrictions": [],
-  "last_ai_run": 1791667482.3201132,
+  "last_ai_run": 1791691089.666146,
   "pending_items": [],
   "nutrition_migration_version": 2
 }

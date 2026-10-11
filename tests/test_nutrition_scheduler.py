@@ -33,7 +33,7 @@ class NutritionSchedulerTests(unittest.TestCase):
             called.set()
             return {item: {"carbs": 1, "protein": 2, "fat": 3} for item in items}
 
-        self.brain.add_item("apples")
+        self.brain.add_item("oranges")
         scheduler = NutritionScheduler(
             self.brain,
             lookup,
@@ -47,7 +47,7 @@ class NutritionSchedulerTests(unittest.TestCase):
         scheduler.inventory_changed()
 
         self.assertTrue(called.wait(1))
-        self.assertEqual(calls, [["apples", "beans"]])
+        self.assertEqual(calls, [["oranges", "beans"]])
         self.wait_for(lambda: self.brain.get_pending_items() == [])
 
     def test_additions_during_call_wait_for_next_rate_limited_batch(self):
@@ -79,7 +79,7 @@ class NutritionSchedulerTests(unittest.TestCase):
                 with state_lock:
                     active_calls -= 1
 
-        self.brain.add_item("apples")
+        self.brain.add_item("oranges")
         scheduler = NutritionScheduler(
             self.brain,
             lookup,
@@ -96,7 +96,7 @@ class NutritionSchedulerTests(unittest.TestCase):
 
         self.assertTrue(second_call_finished.wait(1))
         self.wait_for(lambda: self.brain.get_pending_items() == [])
-        self.assertEqual(calls, [["apples"], ["beans", "donuts"]])
+        self.assertEqual(calls, [["oranges"], ["beans", "donuts"]])
         self.assertGreaterEqual(call_times[1] - call_times[0], 0.10)
         self.assertEqual(max_active_calls, 1)
         self.assertEqual(self.brain.get_pending_items(), [])
