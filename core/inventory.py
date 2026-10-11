@@ -1,10 +1,13 @@
+import json
+import os
 from datetime import datetime
+from pathlib import Path
 
 class CartInventory:
     """
     Manages the in-memory cart inventory tally and dispatches ADD / REMOVE events.
     """
-    def __init__(self):
+    def __init__(self, camera_inventory_path=None):
         # Target classes
         self.tally = {
             "apple": 0,
@@ -12,6 +15,8 @@ class CartInventory:
             "bottle": 0,
         }
         self.event_history = []
+        self.camera_inventory_path = Path(camera_inventory_path or Path(__file__).resolve().parents[1] / "public" / "mock_camera_inventory.json")
+        self._save_camera_inventory()
 
     def add_item(self, item_name, track_id, conf=1.0):
         """Registers a 1-shot ADD event into the cart."""
@@ -32,6 +37,7 @@ class CartInventory:
         }
         self.event_history.append(event_record)
 
+        self._save_camera_inventory()
         self._log_event(event_record)
         return event_record
 
@@ -54,8 +60,18 @@ class CartInventory:
         }
         self.event_history.append(event_record)
 
+        self._save_camera_inventory()
         self._log_event(event_record)
         return event_record
+
+    def _save_camera_inventory(self):
+        """Publish the vision tally for the dashboard to consume."""
+        self.camera_inventory_path.parent.mkdir(parents=True, exist_ok=True)
+        temporary_path = self.camera_inventory_path.with_suffix(".json.tmp")
+        with temporary_path.open("w", encoding="utf-8") as file:
+            json.dump(self.tally, file, indent=2)
+            file.write("\n")
+        os.replace(temporary_path, self.camera_inventory_path)
 
     def _log_event(self, record):
         """Prints a clean, formatted audit log to the terminal console."""

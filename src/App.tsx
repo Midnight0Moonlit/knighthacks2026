@@ -458,6 +458,7 @@ function CartDashboard() {
   const [pulsingItem, setPulsingItem] = useState<string | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const macroPollingRef = useRef(false);
+  const cameraInventorySignatureRef = useRef('');
   const recipeSwipeStartRef = useRef<{ x: number; y: number } | null>(null);
 
   const loadMacrosAsync = async () => {
@@ -523,15 +524,31 @@ function CartDashboard() {
 
   const loadMockCameraInventory = async () => {
     try {
-      const cameraInventory = await fetchJson(MOCK_CAMERA_INVENTORY_URL);
+      const cameraInventory = await fetchJson(`${MOCK_CAMERA_INVENTORY_URL}?t=${Date.now()}`);
       if (!cameraInventory || typeof cameraInventory !== 'object' || Array.isArray(cameraInventory)) {
         throw new Error('Mock camera inventory must be a JSON object of item counts.');
       }
       const inventoryFromFixture = buildInventoryFromStore(cameraInventory);
-      if (!Object.values(inventoryFromFixture).some((quantity) => quantity > 0)) {
-        throw new Error('Mock camera inventory does not contain any recognized catalog items.');
-      }
+      const signature = JSON.stringify(cameraInventory);
+      if (signature === cameraInventorySignatureRef.current) return;
+      cameraInventorySignatureRef.current = signature;
       setInventory(inventoryFromFixture);
+
+      await Promise.all(
+        (Object.keys(CATALOG) as ItemKey[]).map((item) =>
+          fetchJson('/api/brain/items', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              item,
+              quantity: inventoryFromFixture[item] ?? 0,
+              operation: 'set',
+            }),
+          }).catch((error) => {
+            console.error(`[frontend] could not sync camera item ${item}`, error);
+          }),
+        ),
+      );
     } catch (error) {
       console.error('[frontend] could not load mock camera inventory', error);
     }
@@ -572,6 +589,9 @@ function CartDashboard() {
   useEffect(() => {
     console.log('[frontend] CartDashboard mounted');
     void loadMockCameraInventory();
+    const cameraInventoryPoller = window.setInterval(() => {
+      void loadMockCameraInventory();
+    }, 1000);
     fetchJson('/api/cart/entered', { method: 'POST' })
       .then(() => refreshBrainData())
       .catch((error) => {
@@ -580,7 +600,10 @@ function CartDashboard() {
         setMacroLoadError('Could not start nutrition lookups. Please reload the cart.');
     });
     connectWebSocket();
-    return () => wsRef.current?.close();
+    return () => {
+      window.clearInterval(cameraInventoryPoller);
+      wsRef.current?.close();
+    };
   }, []);
 
   const sendAction = async (action: string, item?: ItemKey) => {

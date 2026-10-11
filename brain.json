@@ -1,6 +1,6 @@
 {
   "foods": {
-    "apples": 0,
+    "apples": 1,
     "beans": 0,
     "bananas": 0,
     "donuts": 0,
@@ -30,7 +30,7 @@
     }
   },
   "dietary_restrictions": [
-    "fish",
+    "tree_nuts",
     "peanuts"
   ],
   "other_dietary_restrictions": [],

@@ -2,6 +2,26 @@
 
 ## Jetson Nano USB camera
 
+## Start the complete application
+
+From the repository directory, start the Flask backend, Vite dashboard, and
+computer-vision cart tracker together:
+
+```bash
+./run_all.sh
+```
+
+The launcher activates the virtualenv at `../.venv` (for this checkout,
+`/home/greengoblin/.venv`), starts the backend on port `5001`, starts Vite on
+port `5173`, and starts the Jetson-safe cart tracker. Press `Ctrl+C` once to
+stop all three processes. Logs are written to `/tmp/knighthacks2026/`.
+
+If the virtualenv is stored elsewhere:
+
+```bash
+VENV_DIR=/path/to/.venv ./run_all.sh
+```
+
 The vision scripts use V4L2 on Linux/Jetson and automatically try both camera
 indices `0` and `1`. The detector now uses 640x360 MJPEG capture, `yolov8n.pt`,
 320-pixel CPU inference, and 5 inferences per second to avoid exhausting the
@@ -92,6 +112,11 @@ Jetson setup supports a different configuration.
 Objects already inside the configured zone when the tracker starts are counted
 immediately. Objects entering later are counted once when they cross into the
 zone, and removed once when they cross back out.
+
+Vision add/remove events publish the current tally to
+`public/mock_camera_inventory.json`. The dashboard polls that file once per
+second and synchronizes the displayed inventory and backend store. Manual
+`+`, `-`, and reset controls continue to use the dashboard API.
 
 To adjust the zone interactively, use:
 
