@@ -5,7 +5,7 @@ import './App.css';
 const CATALOG = {
   apples: { id: 'apples', name: '🍎 Apples', price: 1.29 },
   bananas: { id: 'bananas', name: '🍌 Bananas', price: 0.59 },
-  'frozen meal': { id: 'frozen meal', name: '🍱 Frozen Meal', price: 4.99 },
+  'buffalo sauce': { id: 'buffalo sauce', name: '🌶️ Buffalo Sauce', price: 4.99 },
   'barbecue sauce': { id: 'barbecue sauce', name: '🍖 Barbecue Sauce', price: 2.49 },
   'water bottle': { id: 'water bottle', name: '💦 Water Bottle', price: 1.99 },
 } as const;
@@ -24,11 +24,26 @@ const CAMERA_ITEM_ALIASES: Record<string, ItemKey> = {
   water: 'water bottle',
   'water bottle': 'water bottle',
   'water bottles': 'water bottle',
-  'frozen meal': 'frozen meal',
-  'frozen meals': 'frozen meal',
+  'buffalo sauce': 'buffalo sauce',
+  'buffalo sauces': 'buffalo sauce',
   'barbecue sauce': 'barbecue sauce',
   'bbq sauce': 'barbecue sauce',
   'barbeque sauce': 'barbecue sauce',
+};
+
+const ITEM_ALLERGENS: Partial<Record<ItemKey, string[]>> = {
+  'barbecue sauce': ['soy'],
+};
+
+const normalizeAllergen = (value: string) => {
+  const normalized = value.trim().toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (normalized === 'soy' || normalized === 'soybean' || normalized === 'soybeans') return 'soy';
+  return normalized;
+};
+
+const getCatalogDisplayName = (item: ItemKey, showWarning: boolean) => {
+  if (item === 'barbecue sauce' && showWarning) return '⚠️ Barbecue Sauce';
+  return CATALOG[item].name;
 };
 
 const normalizeCatalogItemKey = (itemName: string): ItemKey | null => {
@@ -53,12 +68,12 @@ const RECIPE_PREVIEWS: {
     steps: ['Wash and slice the apples and bananas.', 'Arrange the fruit in a bowl and enjoy.'],
   },
   {
-    title: 'Quick Frozen Meal',
-    description: 'Heat a convenient frozen meal for a quick and satisfying lunch or dinner.',
-    ingredients: ['frozen meal'],
+    title: 'Quick Buffalo Sauce',
+    description: 'Serve buffalo sauce alongside a meal for a quick, flavorful kick.',
+    ingredients: ['buffalo sauce'],
     time: '6 min',
     badge: 'Quick',
-    steps: ['Follow the package heating instructions.', 'Let it cool briefly, then enjoy.'],
+    steps: ['Pour the buffalo sauce into a serving dish.', 'Serve alongside your favorite prepared meal.'],
   },
   {
     title: 'Barbecue Apple Snack',
@@ -69,12 +84,12 @@ const RECIPE_PREVIEWS: {
     steps: ['Wash and slice the apple.', 'Serve with your prepared barbecue item.'],
   },
   {
-    title: 'Frozen Meal with Barbecue Sauce',
-    description: 'Add barbecue sauce to a warmed frozen meal for an easy flavor boost.',
-    ingredients: ['frozen meal', 'barbecue sauce'],
+    title: 'Buffalo Sauce with Barbecue Sauce',
+    description: 'Pair buffalo sauce with barbecue sauce for a quick, savory dip.',
+    ingredients: ['buffalo sauce', 'barbecue sauce'],
     time: '8 min',
     badge: 'Easy',
-    steps: ['Heat the frozen meal according to its package instructions.', 'Add barbecue sauce before serving.'],
+    steps: ['Mix the buffalo sauce and barbecue sauce to taste.', 'Serve as a dip or sauce for your favorite meal.'],
   },
   {
     title: 'Crisp Apple Snack',
@@ -126,7 +141,7 @@ const buildInventoryFromStore = (foods: Record<string, unknown> = {}) => {
   const base = {
     apples: 0,
     bananas: 0,
-    'frozen meal': 0,
+    'buffalo sauce': 0,
     'barbecue sauce': 0,
     'water bottle': 0,
   } as Record<ItemKey, number>;
@@ -442,11 +457,19 @@ function CartDashboard() {
   const [inventory, setInventory] = useState<Record<ItemKey, number>>({
     apples: 0,
     bananas: 0,
-    'frozen meal': 0,
+    'buffalo sauce': 0,
     'barbecue sauce': 0,
     'water bottle': 0,
   });
   const [macroProgress, setMacroProgress] = useState<MacroProgress[]>(DEFAULT_MACRO_GOALS);
+  const [dietaryRestrictionIds, setDietaryRestrictionIds] = useState<string[]>([]);
+  const [otherDietaryRestrictions, setOtherDietaryRestrictions] = useState<string[]>([]);
+  const [pendingAllergenWarning, setPendingAllergenWarning] = useState<{
+    item: ItemKey;
+    allergens: string[];
+  } | null>(null);
+  const [allergenWarningError, setAllergenWarningError] = useState('');
+  const [acceptedAllergenItems, setAcceptedAllergenItems] = useState<ItemKey[]>([]);
   const [macroLoadStatus, setMacroLoadStatus] = useState<'loading' | 'ready' | 'error'>('loading');
   const [macroLoadError, setMacroLoadError] = useState('');
   const [pendingMacroItems, setPendingMacroItems] = useState<string[]>([]);
@@ -515,6 +538,16 @@ function CartDashboard() {
       const brainData = await fetchJson('/api/brain');
       const foodStore = brainData?.foods ?? {};
       console.log('[frontend] received brain data', brainData);
+      setDietaryRestrictionIds(
+        Array.isArray(brainData?.dietary_restrictions)
+          ? brainData.dietary_restrictions.filter((restriction: unknown): restriction is string => typeof restriction === 'string')
+          : [],
+      );
+      setOtherDietaryRestrictions(
+        Array.isArray(brainData?.other_dietary_restrictions)
+          ? brainData.other_dietary_restrictions.filter((restriction: unknown): restriction is string => typeof restriction === 'string')
+          : [],
+      );
       const backendInventory = buildInventoryFromStore(foodStore);
       const hasBackendInventory = Object.values(backendInventory).some((quantity) => quantity > 0);
       if (acceptEmptyInventory || hasBackendInventory) {
@@ -616,7 +649,26 @@ function CartDashboard() {
     };
   }, []);
 
-  const sendAction = async (action: string, item?: ItemKey) => {
+  const getMatchingItemAllergens = (item: ItemKey) => {
+    const restrictedAllergens = new Set([
+      ...dietaryRestrictionIds,
+      ...otherDietaryRestrictions,
+    ].map(normalizeAllergen));
+    return (ITEM_ALLERGENS[item] ?? [])
+      .filter((allergen) => restrictedAllergens.has(normalizeAllergen(allergen)))
+      .map((allergen) => allergen === 'soy' ? 'Soy' : allergen);
+  };
+
+  const sendAction = async (action: string, item?: ItemKey, acceptAllergenWarning = false) => {
+    if (action === 'MANUAL_ADD' && item && !acceptAllergenWarning && !acceptedAllergenItems.includes(item)) {
+      const allergens = getMatchingItemAllergens(item);
+      if (allergens.length > 0) {
+        setPendingAllergenWarning({ item, allergens });
+        setAllergenWarningError('');
+        return;
+      }
+    }
+
     if (action === 'MANUAL_ADD' && item) {
       console.log(`[frontend] manual add ${item}`);
       await fetchJson('/api/brain/items', {
@@ -627,14 +679,22 @@ function CartDashboard() {
     }
     if (action === 'MANUAL_REMOVE' && item) {
       console.log(`[frontend] manual remove ${item}`);
-      await fetchJson('/api/brain/items', {
+      const brainData = await fetchJson('/api/brain/items', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item, quantity: 1, operation: 'subtract' }),
       });
+      if (item === 'barbecue sauce' && Number(brainData?.foods?.[item] ?? 0) === 0) {
+        setAcceptedAllergenItems((accepted) => accepted.filter((acceptedItem) => acceptedItem !== item));
+      }
+    }
+    if (action === 'MANUAL_ADD' && item && acceptAllergenWarning) {
+      setAcceptedAllergenItems((accepted) => accepted.includes(item) ? accepted : [...accepted, item]);
     }
     if (action === 'RESET') {
       console.log('[frontend] resetting cart');
+      setAcceptedAllergenItems([]);
+      setPendingAllergenWarning(null);
       for (const key of Object.keys(CATALOG) as ItemKey[]) {
         await fetchJson('/api/brain/items', {
           method: 'POST',
@@ -649,6 +709,19 @@ function CartDashboard() {
     }
 
     await refreshBrainData(true);
+  };
+
+  const acceptPendingAllergenWarning = async () => {
+    const item = pendingAllergenWarning?.item;
+    if (!item) return;
+    setAllergenWarningError('');
+    try {
+      await sendAction('MANUAL_ADD', item, true);
+      setPendingAllergenWarning(null);
+    } catch (error) {
+      console.error('[frontend] could not add allergen-warning item after acceptance', error);
+      setAllergenWarningError('Could not add this item. Please try again.');
+    }
   };
 
   const saveSettings = async () => {
@@ -820,7 +893,9 @@ function CartDashboard() {
                     .filter((key) => inventory[key] > 0)
                     .map((key) => (
                       <li className="recipe-inventory-item" key={key}>
-                        <span>{CATALOG[key].name}</span>
+                        <span className={acceptedAllergenItems.includes(key) ? 'allergen-accepted-name' : undefined}>
+                          {getCatalogDisplayName(key, acceptedAllergenItems.includes(key))}
+                        </span>
                         <span className="recipe-inventory-quantity">× {inventory[key]}</span>
                       </li>
                     ))}
@@ -842,7 +917,9 @@ function CartDashboard() {
                   return (
                     <div key={key} className={`catalog-row ${isPulsing ? 'pulse-anim' : ''}`}>
                       <div className="catalog-info">
-                        <strong>{item.name}</strong>
+                        <strong className={acceptedAllergenItems.includes(key) ? 'allergen-accepted-name' : undefined}>
+                          {getCatalogDisplayName(key, acceptedAllergenItems.includes(key))}
+                        </strong>
                         <div className="item-price">${item.price.toFixed(2)}</div>
                       </div>
 
@@ -871,7 +948,19 @@ function CartDashboard() {
         </div>
 
         <div className="receipt-panel">
-          {!isRecipeMode && <div className="nutrition-card">
+          {!isRecipeMode && pendingAllergenWarning ? (
+            <section className="allergen-warning-card" role="alert" aria-live="assertive">
+              <h2>Allergy Warning</h2>
+              <p>
+                {CATALOG[pendingAllergenWarning.item].name.replace(/^\S+\s*/, '')} contains a dietary restriction you are trying to avoid:{' '}
+                <strong>{pendingAllergenWarning.allergens.join(', ')}</strong>
+              </p>
+              {allergenWarningError && <p role="alert">{allergenWarningError}</p>}
+              <button type="button" onClick={() => void acceptPendingAllergenWarning()}>
+                Accept
+              </button>
+            </section>
+          ) : !isRecipeMode && <div className="nutrition-card">
             <h2 className="nutrition-title">Macro Goals</h2>
             <div className="macro-progress-layout">
               <svg
@@ -1023,7 +1112,7 @@ function CartDashboard() {
               </div>
             ) : (
               <p className="recipe-empty-state">
-                Add apples, bananas, frozen meals, or barbecue sauce in Shopping Mode to discover ideas for your cart.
+                Add apples, bananas, buffalo sauce, or barbecue sauce in Shopping Mode to discover ideas for your cart.
               </p>
             )}
             {availableRecipes.length > 1 && (

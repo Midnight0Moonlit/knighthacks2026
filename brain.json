@@ -6,7 +6,9 @@
     "donuts": 0,
     "water bottle": 0,
     "frozen meal": 0,
-    "barbecue sauce": 0
+    "barbecue sauce": 0,
+    "wing sauce": 0,
+    "buffalo sauce": 0
   },
   "budget": 50.0,
   "nutrition": {
@@ -29,13 +31,18 @@
       "carbs": 31.0,
       "protein": 3.0,
       "fat": 14.0
+    },
+    "frozen meal": {
+      "carbs": 40.0,
+      "protein": 18.0,
+      "fat": 12.0
     }
   },
-  "dietary_restrictions": [],
-  "other_dietary_restrictions": [
-    "Apple"
+  "dietary_restrictions": [
+    "soybeans"
   ],
-  "last_ai_run": 1791667482.3201132,
+  "other_dietary_restrictions": [],
+  "last_ai_run": 1791691089.666146,
   "pending_items": [],
   "nutrition_migration_version": 2
 }
