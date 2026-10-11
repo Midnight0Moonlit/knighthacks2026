@@ -9,6 +9,14 @@ from typing import Any, Optional, Union
 class Brain:
     """Local storage for foods, budget, and cached macro data for each item."""
 
+    CATALOG_NUTRITION_PER_SERVING = {
+        "apples": {"carbs": 25.0, "protein": 0.5, "fat": 0.3},
+        "bananas": {"carbs": 27.0, "protein": 1.3, "fat": 0.3},
+        "buffalo sauce": {"carbs": 1.0, "protein": 0.0, "fat": 2.0},
+        "barbecue sauce": {"carbs": 18.0, "protein": 0.0, "fat": 0.0},
+        "water bottle": {"carbs": 0.0, "protein": 0.0, "fat": 0.0},
+    }
+
     # FDA major food allergens: https://www.fda.gov/food/food-labeling-nutrition/food-allergies
     DIETARY_RESTRICTIONS = (
         {"id": "milk", "label": "Milk"},
@@ -55,6 +63,7 @@ class Brain:
 
         self.data = self._load()
         self._migrate_legacy_nutrition()
+        self._apply_catalog_nutrition()
         self.data["pending_items"] = []
         for item_name, quantity in self.data["foods"].items():
             if quantity > 0:
@@ -149,6 +158,15 @@ class Brain:
 
         self.data["nutrition_migration_version"] = 2
 
+    def _apply_catalog_nutrition(self) -> None:
+        nutrition = self.data.setdefault("nutrition", {})
+        for item_name, macros in self.CATALOG_NUTRITION_PER_SERVING.items():
+            nutrition[item_name] = dict(macros)
+        self.data["pending_items"] = [
+            item for item in self.data.get("pending_items", [])
+            if item not in self.CATALOG_NUTRITION_PER_SERVING
+        ]
+
     def save(self) -> None:
         with self._lock:
             with self.file_path.open("w", encoding="utf-8") as f:
@@ -223,6 +241,11 @@ class Brain:
         if not name:
             return
 
+        if name in self.CATALOG_NUTRITION_PER_SERVING:
+            self.data.setdefault("nutrition", {})[name] = dict(self.CATALOG_NUTRITION_PER_SERVING[name])
+            self._remove_pending_item(name)
+            return
+
         quantity = self.data.get("foods", {}).get(name, 0)
         if quantity < 1 or name in self.data.get("nutrition", {}):
             self._remove_pending_item(name)
@@ -272,6 +295,11 @@ class Brain:
         with self._lock:
             name = self._normalize_name(item_name)
             self.data.setdefault("nutrition", {})
+            if name in self.CATALOG_NUTRITION_PER_SERVING:
+                self.data["nutrition"][name] = dict(self.CATALOG_NUTRITION_PER_SERVING[name])
+                self._remove_pending_item(name)
+                self.save()
+                return self.data["nutrition"][name]
             self.data["nutrition"][name] = {
                 "carbs": float(macros.get("carbs", 0.0) or 0.0),
                 "protein": float(macros.get("protein", 0.0) or 0.0),
@@ -287,6 +315,8 @@ class Brain:
                 if not item_name:
                     continue
                 normalized = self._normalize_name(item_name)
+                if normalized in self.CATALOG_NUTRITION_PER_SERVING:
+                    continue
                 if self.data.get("foods", {}).get(normalized, 0) < 1:
                     continue
                 self.set_item_nutrition(item_name, macros)

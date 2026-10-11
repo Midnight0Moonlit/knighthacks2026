@@ -32,7 +32,7 @@ const CAMERA_ITEM_ALIASES: Record<string, ItemKey> = {
 };
 
 const ITEM_ALLERGENS: Partial<Record<ItemKey, string[]>> = {
-  'barbecue sauce': ['soy'],
+  'buffalo sauce': ['soy'],
 };
 
 const normalizeAllergen = (value: string) => {
@@ -42,7 +42,7 @@ const normalizeAllergen = (value: string) => {
 };
 
 const getCatalogDisplayName = (item: ItemKey, showWarning: boolean) => {
-  if (item === 'barbecue sauce' && showWarning) return '⚠️ Barbecue Sauce';
+  if (item === 'buffalo sauce' && showWarning) return '⚠️ Buffalo Sauce';
   return CATALOG[item].name;
 };
 
@@ -684,7 +684,7 @@ function CartDashboard() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ item, quantity: 1, operation: 'subtract' }),
       });
-      if (item === 'barbecue sauce' && Number(brainData?.foods?.[item] ?? 0) === 0) {
+      if (Number(brainData?.foods?.[item] ?? 0) === 0) {
         setAcceptedAllergenItems((accepted) => accepted.filter((acceptedItem) => acceptedItem !== item));
       }
     }
