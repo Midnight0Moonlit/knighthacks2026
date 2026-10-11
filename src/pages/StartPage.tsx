@@ -9,13 +9,13 @@ export default function StartPage() {
             {/* The Top Bar*/}
             <header className="top-bar">
                 <div className="project-name">
-                    <strong>Budget Buddies</strong> • Powered by Jetson
+                    <strong>Sophro Shoppers</strong> • Powered by Jetson
                 </div>
             </header>
 
             {/* The Main Content */}
             <main className="main-content">
-                <h1 className="page-title">Welcome to Budget Buddies</h1>
+                <h1 className="page-title">Welcome to Sophro Shoppers</h1>
                 <h2>Ready to start your shopping trip?</h2>
             {/* Trigger navigation on click */}
             <button className="giant-start-btn" onClick={() => navigate('/budget')}> START ➔ </button>

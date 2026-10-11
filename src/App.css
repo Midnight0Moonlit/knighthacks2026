@@ -52,6 +52,19 @@ body {
   padding: 1rem 2rem;
   font-size: 1.25rem;
 }
+.brand-lockup {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  min-width: 0;
+}
+.header-logo {
+  display: block;
+  width: 2.25rem;
+  height: 2.25rem;
+  object-fit: contain;
+  flex: 0 0 auto;
+}
 .header-actions {
   position: relative;
   display: flex;
@@ -91,14 +104,21 @@ body {
   justify-content: center; align-items: center; text-align: center;
   padding: 2rem;
 }
+.start-page-logo {
+  display: block;
+  width: clamp(7rem, 20vw, 11rem);
+  height: auto;
+  margin-bottom: clamp(1rem, 3vh, 1.75rem);
+  object-fit: contain;
+}
 .title-text { font-size: 3rem; color: #2c3e50; margin-bottom: 0.5rem; }
 .subtitle-text { font-size: 1.5rem; color: #34495e; font-weight: 400; margin-bottom: 3rem; }
 .helper-text { font-size: 1.2rem; color: #7f8c8d; margin-top: 1rem; }
 
 /* Start & Budget Components */
 .giant-start-btn {
-  background-color: var(--brand); color: var(--cream-text); font-size: 4.5rem; font-weight: bold;
-  padding: 1.5rem 4rem; border: none; border-radius: 2rem;
+  background-color: var(--brand); color: var(--cream-text); font-size: clamp(1.75rem, 5vw, 3rem); font-weight: bold;
+  padding: clamp(0.85rem, 2.5vh, 1.25rem) clamp(1.5rem, 5vw, 3.25rem); border: none; border-radius: 1.5rem;
   box-shadow: 0 10px 20px rgba(82, 109, 88, 0.24); cursor: pointer; transition: transform 0.1s;
 }
 .giant-start-btn:active { transform: scale(0.95); }
@@ -1041,11 +1061,6 @@ body {
   .subtitle-text {
     font-size: 1.2rem;
     margin-bottom: 2rem;
-  }
-
-  .giant-start-btn {
-    font-size: 3rem;
-    padding: 1rem 2rem;
   }
 
   .budget-input-wrapper,

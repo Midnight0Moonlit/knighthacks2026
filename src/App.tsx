@@ -181,9 +181,13 @@ function StartPage() {
   return (
     <>
       <header className="top-header">
-        <div><strong>Budget Buddies</strong></div>
+        <div className="brand-lockup">
+          <img className="header-logo" src="/s_logo_cream.png" alt="" aria-hidden="true" />
+          <strong>Sophro Shoppers</strong>
+        </div>
       </header>
       <main className="page-wrapper">
+        <img className="start-page-logo" src="/s_logo_green.png" alt="" aria-hidden="true" />
         <button className="giant-start-btn" onClick={() => navigate('/dietary-restrictions')}>START SHOPPING</button>
       </main>
     </>
@@ -316,7 +320,10 @@ function DietaryRestrictionsPage() {
   return (
     <>
       <header className="top-header">
-        <div><strong>Budget Buddies</strong></div>
+        <div className="brand-lockup">
+          <img className="header-logo" src="/s_logo_cream.png" alt="" aria-hidden="true" />
+          <strong>Sophro Shoppers</strong>
+        </div>
       </header>
       <main className="page-wrapper dietary-page-wrapper">
         <section className="budget-card dietary-card" aria-labelledby="dietary-title">
@@ -438,7 +445,10 @@ function BudgetPage() {
   return (
     <>
       <header className="top-header">
-        <div><strong>Budget Buddies</strong></div>
+        <div className="brand-lockup">
+          <img className="header-logo" src="/s_logo_cream.png" alt="" aria-hidden="true" />
+          <strong>Sophro Shoppers</strong>
+        </div>
       </header>
       <main className="page-wrapper">
         <div className="budget-card">
@@ -819,7 +829,10 @@ function CartDashboard() {
   return (
     <>
       <header className="top-header">
-        <div><strong>Budget Buddies</strong></div>
+        <div className="brand-lockup">
+          <img className="header-logo" src="/s_logo_cream.png" alt="" aria-hidden="true" />
+          <strong>Sophro Shoppers</strong>
+        </div>
         <div className="header-actions">
           <button className="reset-btn" onClick={() => sendAction('RESET')}>Reset Cart</button>
           <button
