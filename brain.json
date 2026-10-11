@@ -54,6 +54,8 @@
     }
   },
   "dietary_restrictions": [
+    "fish",
+    "crustacean_shellfish",
     "soybeans"
   ],
   "other_dietary_restrictions": [],
