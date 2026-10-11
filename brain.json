@@ -6,9 +6,9 @@
     "donuts": 0,
     "water bottle": 0,
     "frozen meal": 0,
-    "barbecue sauce": 0,
+    "barbecue sauce": 1,
     "wing sauce": 0,
-    "buffalo sauce": 0
+    "buffalo sauce": 2
   },
   "budget": 50.0,
   "nutrition": {
@@ -38,12 +38,12 @@
       "fat": 12.0
     },
     "buffalo sauce": {
-      "carbs": 0.0,
+      "carbs": 1.0,
       "protein": 0.0,
-      "fat": 0.0
+      "fat": 2.0
     },
     "barbecue sauce": {
-      "carbs": 7.0,
+      "carbs": 18.0,
       "protein": 0.0,
       "fat": 0.0
     },

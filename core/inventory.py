@@ -67,9 +67,17 @@ class CartInventory:
     def _save_camera_inventory(self):
         """Publish the vision tally for the dashboard to consume."""
         self.camera_inventory_path.parent.mkdir(parents=True, exist_ok=True)
+        bottle_count = self.tally.get("bottle", 0)
+        published_tally = {
+            "apple": self.tally.get("apple", 0),
+            "banana": self.tally.get("banana", 0),
+            "buffalo sauce": bottle_count // 2,
+            "barbecue sauce": (bottle_count + 1) // 2,
+            "water bottle": 0,
+        }
         temporary_path = self.camera_inventory_path.with_suffix(".json.tmp")
         with temporary_path.open("w", encoding="utf-8") as file:
-            json.dump(self.tally, file, indent=2)
+            json.dump(published_tally, file, indent=2)
             file.write("\n")
         os.replace(temporary_path, self.camera_inventory_path)
 

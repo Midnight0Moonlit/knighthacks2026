@@ -5,7 +5,6 @@ import cv2
 import torch
 from ultralytics import YOLO
 from vision.camera import open_camera, open_preferred_camera
-from vision.zone import CartPolygonZone
 
 def parse_args():
     parser = argparse.ArgumentParser(description="YOLO Target Object Detection")
@@ -49,12 +48,6 @@ def parse_args():
         action="store_true",
         help="Display the camera without loading or running YOLO",
     )
-    parser.add_argument(
-        "--zone-config",
-        type=str,
-        default="config/zone_config.json",
-        help="Path to the adjustable four-corner zone configuration",
-    )
     return parser.parse_args()
 
 def main():
@@ -88,27 +81,8 @@ def main():
     actual_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     print(f"[*] Camera {args.camera} initialized at {actual_w}x{actual_h}")
 
-    zone = CartPolygonZone(args.zone_config)
-    window_name = (
-        f"YOLO Detection [Cam {args.camera} | {args.model}] - "
-        "Drag zone corners | 's' save | 'q' quit"
-    )
+    window_name = f"YOLO Detection [Cam {args.camera} | {args.model}]"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-
-    frame_size = {"width": actual_w, "height": actual_h}
-
-    def on_mouse(event, x, y, flags, param):
-        zone.handle_mouse_event(
-            event,
-            x,
-            y,
-            flags,
-            param,
-            frame_size["width"],
-            frame_size["height"],
-        )
-
-    cv2.setMouseCallback(window_name, on_mouse)
 
     print("\n" + "=" * 55)
     print(f" Model: {args.model} | Conf: {args.conf}")
@@ -117,9 +91,6 @@ def main():
     print(" Controls:")
     print("   [q] or [ESC] : Quit")
     print("   [c]          : Toggle between Camera 0 and 1")
-    print("   [drag]       : Move a zone corner")
-    print("   [s]          : Save the zone corners")
-    print("   [r]          : Reset the zone corners")
     print("   [+] / [-]    : Adjust confidence threshold")
     print("=" * 55 + "\n")
 
@@ -138,7 +109,6 @@ def main():
                 print("[!] Error reading frame from camera.")
                 break
 
-            frame_size["height"], frame_size["width"] = frame.shape[:2]
             now = time.monotonic()
             if now < next_inference:
                 cv2.waitKey(1)
@@ -164,8 +134,6 @@ def main():
                     cls_id = int(box.cls[0].item())
                     label = model.names[cls_id]
                     counts[label] = counts.get(label, 0) + 1
-
-            zone.draw(annotated_frame)
 
             # Calculate FPS
             frame_count += 1
@@ -219,10 +187,6 @@ def main():
                 else:
                     print(f"[!] Could not open camera {new_camera}, reverting back.")
                     cap = open_camera(current_camera)
-            elif key == ord('s'):
-                zone.save_config()
-            elif key == ord('r'):
-                zone.reset_defaults()
             elif key == ord('+') or key == ord('='):
                 conf_threshold = min(0.95, round(conf_threshold + 0.05, 2))
                 print(f"[*] Increased confidence threshold to: {conf_threshold}")

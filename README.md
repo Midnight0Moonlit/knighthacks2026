@@ -74,12 +74,9 @@ them without editing the script, for example:
 CAMERA_INDEX=1 MODEL_PATH=yolov8s.pt ./run_detection.sh
 ```
 
-The detector displays the adjustable cart zone in the camera window. Drag any
-of the four green corner handles to position it over the cart, press `s` to
-save the corners to `config/zone_config.json`, or press `r` to reset them.
-This uses OpenCV mouse callbacks and the V4L2 camera backend on Linux/Jetson;
-no Windows-specific capture code is required. Use a different configuration
-file with `--zone-config /path/to/zone.json` when needed.
+The detector displays camera detections without a cart boundary polygon. This
+uses the V4L2 camera backend on Linux/Jetson; no Windows-specific capture code
+is required.
 
 To verify the USB camera without loading YOLO:
 
@@ -140,9 +137,9 @@ To use a different engine explicitly:
 MODEL_PATH=/path/to/model.engine DEVICE=0 ./run_cart_tracker.sh
 ```
 
-Objects already inside the configured zone when the tracker starts are counted
-immediately. Objects entering later are counted once when they cross into the
-zone, and removed once when they cross back out.
+Objects visible when the tracker starts are counted immediately. Each tracked
+object is counted once, and is removed only after it has been absent for more
+than three seconds.
 
 If a tracked object disappears, the tracker waits more than three seconds before
 removing it. A brief detection dropout therefore does not remove an item. When

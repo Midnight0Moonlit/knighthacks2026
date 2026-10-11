@@ -659,6 +659,27 @@ function CartDashboard() {
       .map((allergen) => allergen === 'soy' ? 'Soy' : allergen);
   };
 
+  useEffect(() => {
+    if (pendingAllergenWarning || acceptedAllergenItems.length > 0) return;
+
+    const warningItem = (Object.keys(CATALOG) as ItemKey[]).find(
+      (item) => inventory[item] > 0 && getMatchingItemAllergens(item).length > 0,
+    );
+    if (!warningItem) return;
+
+    setAllergenWarningError('');
+    setPendingAllergenWarning({
+      item: warningItem,
+      allergens: getMatchingItemAllergens(warningItem),
+    });
+  }, [
+    acceptedAllergenItems.length,
+    dietaryRestrictionIds,
+    inventory,
+    otherDietaryRestrictions,
+    pendingAllergenWarning,
+  ]);
+
   const sendAction = async (action: string, item?: ItemKey, acceptAllergenWarning = false) => {
     if (action === 'MANUAL_ADD' && item && !acceptAllergenWarning && !acceptedAllergenItems.includes(item)) {
       const allergens = getMatchingItemAllergens(item);

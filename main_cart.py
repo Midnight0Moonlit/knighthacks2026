@@ -5,7 +5,6 @@ import cv2
 from ultralytics import YOLO
 from vision.camera import open_camera, open_preferred_camera
 
-from vision.zone import CartPolygonZone
 from core.inventory import CartInventory
 from core.cart_tracker import CartTracker
 
@@ -13,7 +12,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description="Smart Shopping Cart - High-Speed ADD/REMOVE Tracker")
     parser.add_argument("--camera", type=int, default=1, help="Camera index (default: 1 for USB webcam)")
     parser.add_argument("--model", type=str, default="yolov8n.pt", help="YOLO model weight file (default: yolov8n.pt for high FPS)")
-    parser.add_argument("--conf", type=float, default=0.22, help="Detection confidence threshold")
+    parser.add_argument("--conf", type=float, default=0.20, help="Detection confidence threshold")
     parser.add_argument("--imgsz", type=int, default=640, help="Inference image size (default: 640)")
     parser.add_argument("--max-fps", type=float, default=5.0, help="Maximum inference rate (default: 5 FPS for Jetson Nano)")
     parser.add_argument("--device", default="cpu", help="Inference device: cpu or CUDA index such as 0")
@@ -32,9 +31,6 @@ def main():
     ]
     print(f"[*] Target classes: {[model.names[i] for i in target_class_ids]} (IDs: {target_class_ids})")
 
-    # Initialize Cart Polygon Zone
-    zone = CartPolygonZone()
-
     # Initialize Inventory and Tracker
     inventory = CartInventory()
     tracker = CartTracker(inventory=inventory)
@@ -48,24 +44,13 @@ def main():
         print("[!] Error: No available camera found.")
         sys.exit(1)
 
-    window_name = "Smart Cart Tracker - Drag Corners | 's'=Save | 'r'=Reset | 'q'=Quit"
+    window_name = "Smart Cart Tracker - 'r'=Reset | 'q'=Quit"
     cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-
-    # Enable interactive mouse dragging directly in the main app
-    param_dict = {"w": 1280, "h": 720}
-    def on_mouse(event, x, y, flags, param):
-        w = param_dict.get("w", 1280)
-        h = param_dict.get("h", 720)
-        zone.handle_mouse_event(event, x, y, flags, None, w, h)
-
-    cv2.setMouseCallback(window_name, on_mouse)
 
     print("\n" + "=" * 65)
     print(" Smart Shopping Cart System Running!")
     print(" Targets: Apple, Banana, Water Bottle")
     print(" Controls:")
-    print("   * DRAG CORNERS : Adjust 4 green dots to fit cart entrance rim")
-    print("   [s]            : SAVE corner calibration to config file")
     print("   [r]            : Reset cart inventory tally to 0")
     print("   [c]            : Switch camera (0 <-> 1)")
     print("   [+] / [-]      : Adjust detection confidence")
@@ -103,8 +88,6 @@ def main():
                 cv2.waitKey(1)
                 continue
             next_inference = now + (1.0 / args.max_fps if args.max_fps > 0 else 0)
-            param_dict["w"] = w
-            param_dict["h"] = h
 
             # 1. Fast YOLO prediction (instantaneous, no ByteTrack delay)
             results = model.predict(
@@ -136,15 +119,14 @@ def main():
                     "centroid": (cx, cy),
                 })
 
-            # 3. Draw polygon with draggable handles
+            # 3. Draw detections and inventory status
             annotated_frame = frame.copy()
-            annotated_frame = zone.draw(annotated_frame, show_handles=True)
 
-            # 4. Update centroid tracker and state machine
-            tracked_detections = tracker.process_frame(raw_detections, zone, w, h)
+            # 4. Update centroid tracker and visibility-based inventory state
+            tracked_detections = tracker.process_frame(raw_detections)
 
             # 5. Draw HUD, badges, trails, and inventory card
-            annotated_frame = tracker.draw_hud(annotated_frame, tracked_detections, zone)
+            annotated_frame = tracker.draw_hud(annotated_frame, tracked_detections)
 
             # Calculate live FPS
             frame_count += 1
@@ -171,8 +153,6 @@ def main():
             key = cv2.waitKey(1) & 0xFF
             if key == ord('q') or key == 27:
                 break
-            elif key == ord('s'):
-                zone.save_config()
             elif key == ord('r'):
                 inventory.reset()
                 print("\n[*] Cart inventory tally reset to 0.")
