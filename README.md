@@ -40,6 +40,20 @@ Run object detection with:
 python3 detect_objects.py --camera 0 --model yolov8n.pt
 ```
 
+Equivalent Linux launcher:
+
+```bash
+./run_detection.sh
+```
+
+The launcher uses `.venv/bin/python` when available, otherwise `python3`.
+Jetson-safe defaults are camera `0`, `yolov8n.pt`, and CPU inference. Override
+them without editing the script, for example:
+
+```bash
+CAMERA_INDEX=1 MODEL_PATH=yolov8s.pt ./run_detection.sh
+```
+
 The detector displays the adjustable cart zone in the camera window. Drag any
 of the four green corner handles to position it over the cart, press `s` to
 save the corners to `config/zone_config.json`, or press `r` to reset them.
@@ -63,6 +77,26 @@ Run the cart tracker with:
 
 ```bash
 python3 main_cart.py --camera 0 --model yolov8n.pt
+```
+
+Or use:
+
+```bash
+./run_cart_tracker.sh
+```
+
+The cart tracker uses Jetson-safe defaults of 320-pixel inference, 5 FPS, and
+CPU inference. Override them with `IMGSZ`, `MAX_FPS`, or `DEVICE` if the
+Jetson setup supports a different configuration.
+
+Objects already inside the configured zone when the tracker starts are counted
+immediately. Objects entering later are counted once when they cross into the
+zone, and removed once when they cross back out.
+
+To adjust the zone interactively, use:
+
+```bash
+./run_zone_calibration.sh
 ```
 
 Use `--camera 1` if the camera is exposed as `/dev/video1`. Press `c` while a

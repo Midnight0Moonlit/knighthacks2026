@@ -127,9 +127,9 @@ class ObjectTrack:
         self.last_seen = time.time()
         self.frames_seen = 1
 
-        # Determine starting state:
-        # If object first appeared clearly inside cart (dist > 15px), it was already in cart
-        if initial_dist > 15.0:
+        # Determine starting state. Objects first seen clearly inside the zone
+        # are already in the cart and must be counted immediately.
+        if initial_dist >= 20.0:
             self.state = TrackState.IN_CART
             self.committed = True
         else:
@@ -193,6 +193,10 @@ class CartTracker:
 
             if track_id not in self.tracks:
                 self.tracks[track_id] = ObjectTrack(track_id, name, (cx, cy), dist)
+                if self.tracks[track_id].state == TrackState.IN_CART:
+                    self.inventory.add_item(name, track_id, conf)
+                    self.last_event_banner = f"+ ADDED 1x {name.upper()}"
+                    self.last_event_time = time.time()
             else:
                 self.tracks[track_id].update((cx, cy), dist, conf)
 
