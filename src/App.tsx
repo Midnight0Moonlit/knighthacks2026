@@ -60,8 +60,16 @@ const RECIPE_PREVIEWS: {
   steps: string[];
 }[] = [
   {
-    title: 'Apple & Banana Fruit Bowl',
-    description: 'A fresh, naturally sweet snack with crisp and creamy fruit in every bite.',
+    title: 'Barbecue Wings',
+    description: 'A savory wing pairing with barbecue and buffalo sauce for a flavorful finish.',
+    ingredients: ['barbecue sauce', 'buffalo sauce'],
+    time: '10 min',
+    badge: 'Savory',
+    steps: ['Prepare your favorite wings.', 'Serve with barbecue and buffalo sauce for dipping.'],
+  },
+  {
+    title: 'Fruit Salad',
+    description: 'A fresh, naturally sweet salad with crisp apples and creamy bananas.',
     ingredients: ['apples', 'bananas'],
     time: '5 min',
     badge: 'No-cook',
@@ -546,7 +554,7 @@ function CartDashboard() {
     }
   };
 
-  const refreshBrainData = async (acceptEmptyInventory = false) => {
+  const refreshBrainData = async (acceptEmptyInventory = false, refreshMacros = true) => {
     try {
       const brainData = await fetchJson('/api/brain');
       const foodStore = brainData?.foods ?? {};
@@ -573,9 +581,11 @@ function CartDashboard() {
       console.error('[frontend] could not load brain data', error);
     }
 
-    void loadMacrosAsync().catch((error) => {
-      console.error('[frontend] macro polling failed', error);
-    });
+    if (refreshMacros) {
+      void loadMacrosAsync().catch((error) => {
+        console.error('[frontend] macro polling failed', error);
+      });
+    }
   };
 
   const loadMockCameraInventory = async () => {
@@ -605,6 +615,9 @@ function CartDashboard() {
           }),
         ),
       );
+      void loadMacrosAsync().catch((error) => {
+        console.error('[frontend] camera inventory macro refresh failed', error);
+      });
     } catch (error) {
       console.error('[frontend] could not load mock camera inventory', error);
     }
@@ -648,8 +661,9 @@ function CartDashboard() {
       void loadMockCameraInventory();
     }, 1000);
     fetchJson('/api/cart/entered', { method: 'POST' })
-      .then(() => refreshBrainData())
+      .then(() => refreshBrainData(false, false))
       .then(() => loadMockCameraInventory())
+      .then(() => loadMacrosAsync())
       .catch((error) => {
         console.error('[frontend] could not register cart entry', error);
         setMacroLoadStatus('error');
@@ -798,9 +812,7 @@ function CartDashboard() {
   const currentTotal = currentSubtotal + currentTax;
   const isOverBudget = budget > 0 && currentTotal > budget;
   const progressPercentage = budget > 0 ? Math.min((currentTotal / budget) * 100, 100) : 0;
-  const availableRecipes = RECIPE_PREVIEWS.filter((recipe) =>
-    recipe.ingredients.every((item) => inventory[item] > 0),
-  );
+  const availableRecipes = RECIPE_PREVIEWS;
   const selectedRecipeIndex = availableRecipes.length > 0
     ? recipeIndex % availableRecipes.length
     : 0;

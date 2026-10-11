@@ -6,9 +6,9 @@
     "donuts": 0,
     "water bottle": 0,
     "frozen meal": 0,
-    "barbecue sauce": 1,
+    "barbecue sauce": 0,
     "wing sauce": 0,
-    "buffalo sauce": 2
+    "buffalo sauce": 0
   },
   "budget": 50.0,
   "nutrition": {
