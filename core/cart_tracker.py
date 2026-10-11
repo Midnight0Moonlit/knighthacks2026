@@ -157,13 +157,16 @@ class CartTracker:
         inventory,
         entry_dist_threshold=20.0,   # pixels inside polygon to confirm ADD
         exit_dist_threshold=-15.0,   # pixels outside polygon to confirm REMOVE
+        disappearance_grace_seconds=3.0,
     ):
         self.inventory = inventory
         self.entry_dist_threshold = entry_dist_threshold
         self.exit_dist_threshold = exit_dist_threshold
+        self.disappearance_grace_seconds = disappearance_grace_seconds
 
         self.centroid_tracker = SimpleCentroidTracker(max_disappeared=10, max_distance=150)
         self.tracks = {}  # track_id -> ObjectTrack
+        self.missing_since = {}
         self.last_event_banner = None
         self.last_event_time = 0.0
 
@@ -185,6 +188,7 @@ class CartTracker:
             conf = det["conf"]
             cx, cy = det["centroid"]
             active_track_ids.add(track_id)
+            self.missing_since.pop(track_id, None)
 
             # Compute signed pixel distance to polygon boundary
             status, dist = polygon_zone.get_zone_status(cx, cy, frame_width, frame_height)
@@ -239,12 +243,41 @@ class CartTracker:
                     # Dropped back in
                     track.state = TrackState.IN_CART
 
-        # Clean stale tracks
         now = time.time()
+        for tid, track in self.tracks.items():
+            if tid in active_track_ids:
+                continue
+
+            missing_since = self.missing_since.setdefault(tid, track.last_seen)
+            if now - missing_since <= self.disappearance_grace_seconds:
+                continue
+
+            if track.state in [TrackState.IN_CART, TrackState.EXITING]:
+                track.state = TrackState.REMOVED
+                self.inventory.remove_item(track.class_name, track.track_id, track.latest_conf)
+                self.last_event_banner = f"- REMOVED 1x {track.class_name.upper()}"
+                self.last_event_time = now
+
+        # If every tracked object has been missing beyond the grace period,
+        # publish a clean empty-cart state.
+        if (
+            not active_track_ids
+            and self.tracks
+            and all(
+                now - self.missing_since.setdefault(tid, track.last_seen)
+                > self.disappearance_grace_seconds
+                for tid, track in self.tracks.items()
+            )
+            and any(self.inventory.tally.values())
+        ):
+            self.inventory.reset()
+
+        # Clean stale tracks
         for tid in list(self.tracks.keys()):
             if tid not in active_track_ids and (now - self.tracks[tid].last_seen > 5.0):
                 if self.tracks[tid].state in [TrackState.OUTSIDE, TrackState.REMOVED]:
                     del self.tracks[tid]
+                    self.missing_since.pop(tid, None)
 
         return tracked_detections
 
@@ -305,18 +338,18 @@ class CartTracker:
 
         # Top-Right: Cart Inventory HUD Card
         tally = self.inventory.tally
-        box_w = 260
-        box_h = 135
+        box_w = 220
+        box_h = 115
         bx1 = w - box_w - 15
         by1 = 15
 
         cv2.rectangle(frame, (bx1, by1), (bx1 + box_w, by1 + box_h), (20, 20, 20), -1)
         cv2.rectangle(frame, (bx1, by1), (bx1 + box_w, by1 + box_h), (0, 255, 200), 2)
-        cv2.putText(frame, "CART INVENTORY", (bx1 + 15, by1 + 25), cv2.FONT_HERSHEY_SIMPLEX, 0.65, (0, 255, 200), 2, cv2.LINE_AA)
+        cv2.putText(frame, "CART INVENTORY", (bx1 + 12, by1 + 22), cv2.FONT_HERSHEY_SIMPLEX, 0.52, (0, 255, 200), 1, cv2.LINE_AA)
 
-        cv2.putText(frame, f"Apples:       {tally.get('apple', 0)}", (bx1 + 15, by1 + 55), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(frame, f"Bananas:      {tally.get('banana', 0)}", (bx1 + 15, by1 + 80), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
-        cv2.putText(frame, f"Water Bottles:{tally.get('bottle', 0)}", (bx1 + 15, by1 + 105), cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, f"Apples: {tally.get('apple', 0)}", (bx1 + 12, by1 + 48), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, f"Bananas: {tally.get('banana', 0)}", (bx1 + 12, by1 + 70), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
+        cv2.putText(frame, f"Water bottles: {tally.get('bottle', 0)}", (bx1 + 12, by1 + 92), cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1, cv2.LINE_AA)
 
         # Top-Left: Event Banner with 2.5s Auto-Fade Timer
         if self.last_event_banner and (time.time() - self.last_event_time < 2.5):

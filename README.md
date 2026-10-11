@@ -105,13 +105,49 @@ Or use:
 ./run_cart_tracker.sh
 ```
 
-The cart tracker uses Jetson-safe defaults of 320-pixel inference, 5 FPS, and
-CPU inference. Override them with `IMGSZ`, `MAX_FPS`, or `DEVICE` if the
-Jetson setup supports a different configuration.
+The cart tracker uses 640-pixel inference, 5 FPS, and
+GPU/TensorRT inference when the YOLO11m engine is available. Override them with
+`IMGSZ`, `MAX_FPS`, or `DEVICE` if needed.
+
+## YOLO11m TensorRT FP16 on Orin Nano
+
+The cart launcher prefers `models/yolo11m.engine` and keeps the verified
+`yolov8n.pt` PyTorch detector as an automatic fallback. Generate the engine on
+the Orin Nano, using the same JetPack/TensorRT environment that will run it:
+
+```bash
+# Place yolo11m.pt in the repository, or set MODEL_SOURCE to its path.
+./export_yolo11m_tensorrt.sh
+```
+
+This exports YOLO11m at 320 pixels with TensorRT FP16 and writes
+`models/yolo11m.engine`. The first export may take several minutes and requires
+TensorRT development/runtime packages from JetPack. After export:
+
+```bash
+./run_cart_tracker.sh
+```
+
+To force the existing fallback:
+
+```bash
+MODEL_PATH=yolov8n.pt DEVICE=cpu ./run_cart_tracker.sh
+```
+
+To use a different engine explicitly:
+
+```bash
+MODEL_PATH=/path/to/model.engine DEVICE=0 ./run_cart_tracker.sh
+```
 
 Objects already inside the configured zone when the tracker starts are counted
 immediately. Objects entering later are counted once when they cross into the
 zone, and removed once when they cross back out.
+
+If a tracked object disappears, the tracker waits more than three seconds before
+removing it. A brief detection dropout therefore does not remove an item. When
+all tracked objects have been absent beyond that grace period, the vision
+inventory is reset to zero.
 
 Vision add/remove events publish the current tally to
 `public/mock_camera_inventory.json`. The dashboard polls that file once per

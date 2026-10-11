@@ -14,7 +14,7 @@ def parse_args():
     parser.add_argument("--camera", type=int, default=1, help="Camera index (default: 1 for USB webcam)")
     parser.add_argument("--model", type=str, default="yolov8n.pt", help="YOLO model weight file (default: yolov8n.pt for high FPS)")
     parser.add_argument("--conf", type=float, default=0.22, help="Detection confidence threshold")
-    parser.add_argument("--imgsz", type=int, default=320, help="Inference image size (default: 320 for Jetson Nano)")
+    parser.add_argument("--imgsz", type=int, default=640, help="Inference image size (default: 640)")
     parser.add_argument("--max-fps", type=float, default=5.0, help="Maximum inference rate (default: 5 FPS for Jetson Nano)")
     parser.add_argument("--device", default="cpu", help="Inference device: cpu or CUDA index such as 0")
     return parser.parse_args()
@@ -174,7 +174,7 @@ def main():
             elif key == ord('s'):
                 zone.save_config()
             elif key == ord('r'):
-                inventory.tally = {"apple": 0, "banana": 0, "bottle": 0}
+                inventory.reset()
                 print("\n[*] Cart inventory tally reset to 0.")
             elif key == ord('c'):
                 new_camera = 0 if current_camera == 1 else 1

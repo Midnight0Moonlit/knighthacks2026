@@ -5,8 +5,8 @@ import './App.css';
 const CATALOG = {
   apples: { id: 'apples', name: '🍎 Apples', price: 1.29 },
   bananas: { id: 'bananas', name: '🍌 Bananas', price: 0.59 },
-  beans: { id: 'beans', name: '🫘 Beans', price: 1.29 },
-  donuts: { id: 'donuts', name: '🍩 Donuts', price: 1.25 },
+  'frozen meal': { id: 'frozen meal', name: '🍱 Frozen Meal', price: 4.99 },
+  'barbecue sauce': { id: 'barbecue sauce', name: '🍖 Barbecue Sauce', price: 2.49 },
   'water bottle': { id: 'water bottle', name: '💦 Water Bottle', price: 1.99 },
 } as const;
 
@@ -24,8 +24,11 @@ const CAMERA_ITEM_ALIASES: Record<string, ItemKey> = {
   water: 'water bottle',
   'water bottle': 'water bottle',
   'water bottles': 'water bottle',
-  beans: 'beans',
-  donuts: 'donuts',
+  'frozen meal': 'frozen meal',
+  'frozen meals': 'frozen meal',
+  'barbecue sauce': 'barbecue sauce',
+  'bbq sauce': 'barbecue sauce',
+  'barbeque sauce': 'barbecue sauce',
 };
 
 const normalizeCatalogItemKey = (itemName: string): ItemKey | null => {
@@ -50,28 +53,28 @@ const RECIPE_PREVIEWS: {
     steps: ['Wash and slice the apples and bananas.', 'Arrange the fruit in a bowl and enjoy.'],
   },
   {
-    title: 'Simple Seasoned Bean Bowl',
-    description: 'Warm your beans with pantry seasonings for a quick, filling bowl.',
-    ingredients: ['beans'],
-    time: '10 min',
-    badge: 'Hearty',
-    steps: ['Warm the beans in a small pot or microwave-safe bowl.', 'Season to taste and serve warm.'],
+    title: 'Quick Frozen Meal',
+    description: 'Heat a convenient frozen meal for a quick and satisfying lunch or dinner.',
+    ingredients: ['frozen meal'],
+    time: '6 min',
+    badge: 'Quick',
+    steps: ['Follow the package heating instructions.', 'Let it cool briefly, then enjoy.'],
   },
   {
-    title: 'Apple Donut Bites',
-    description: 'Pair apple slices with donut pieces for an easy sweet-and-crunchy treat.',
-    ingredients: ['apples', 'donuts'],
+    title: 'Barbecue Apple Snack',
+    description: 'Pair a crisp apple snack with a savory barbecue-inspired side.',
+    ingredients: ['apples', 'barbecue sauce'],
     time: '5 min',
     badge: 'Snack',
-    steps: ['Wash and slice the apple.', 'Serve with bite-sized pieces of donut.'],
+    steps: ['Wash and slice the apple.', 'Serve with your prepared barbecue item.'],
   },
   {
-    title: 'Banana Donut Plate',
-    description: 'Slice a banana alongside donut bites for a simple shareable dessert.',
-    ingredients: ['bananas', 'donuts'],
-    time: '5 min',
-    badge: 'Sweet',
-    steps: ['Slice the banana into bite-sized pieces.', 'Arrange with donut pieces on a plate.'],
+    title: 'Frozen Meal with Barbecue Sauce',
+    description: 'Add barbecue sauce to a warmed frozen meal for an easy flavor boost.',
+    ingredients: ['frozen meal', 'barbecue sauce'],
+    time: '8 min',
+    badge: 'Easy',
+    steps: ['Heat the frozen meal according to its package instructions.', 'Add barbecue sauce before serving.'],
   },
   {
     title: 'Crisp Apple Snack',
@@ -88,14 +91,6 @@ const RECIPE_PREVIEWS: {
     time: '2 min',
     badge: 'No-cook',
     steps: ['Peel the banana.', 'Slice or enjoy whole.'],
-  },
-  {
-    title: 'Donut Snack Plate',
-    description: 'Turn your donuts into an easy treat to enjoy or share.',
-    ingredients: ['donuts'],
-    time: '2 min',
-    badge: 'Sweet',
-    steps: ['Place the donuts on a plate.', 'Share and enjoy.'],
   },
 ];
 
@@ -128,7 +123,13 @@ const fetchJson = async (url: string, options?: RequestInit) => {
 };
 
 const buildInventoryFromStore = (foods: Record<string, unknown> = {}) => {
-  const base = { apples: 0, bananas: 0, beans: 0, donuts: 0, 'water bottle': 0 } as Record<ItemKey, number>;
+  const base = {
+    apples: 0,
+    bananas: 0,
+    'frozen meal': 0,
+    'barbecue sauce': 0,
+    'water bottle': 0,
+  } as Record<ItemKey, number>;
   for (const [itemName, quantity] of Object.entries(foods)) {
     const key = normalizeCatalogItemKey(itemName);
     const parsedQuantity = Number(quantity);
@@ -189,7 +190,7 @@ function DietaryRestrictionsPage() {
     setErrorMessage('');
 
     fetchJson('/api/brain')
-      .then((brainData) => {
+      .then(async (brainData) => {
         const available = brainData?.available_dietary_restrictions;
         if (!Array.isArray(available) || available.some(
           (option) => typeof option?.id !== 'string' || typeof option?.label !== 'string',
@@ -209,10 +210,19 @@ function DietaryRestrictionsPage() {
 
         if (isActive) {
           setOptions(available);
-          setSelectedRestrictions(selected);
-          setOtherRestrictions(otherSelected);
-          setIsOtherEntryOpen(otherSelected.length > 0);
+          setSelectedRestrictions([]);
+          setOtherRestrictions([]);
+          setIsOtherEntryOpen(false);
         }
+
+        await fetchJson('/api/brain/dietary-restrictions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            dietary_restrictions: [],
+            other_dietary_restrictions: [],
+          }),
+        });
       })
       .catch((error: unknown) => {
         console.error('[frontend] could not load dietary restrictions', error);
@@ -432,8 +442,8 @@ function CartDashboard() {
   const [inventory, setInventory] = useState<Record<ItemKey, number>>({
     apples: 0,
     bananas: 0,
-    beans: 0,
-    donuts: 0,
+    'frozen meal': 0,
+    'barbecue sauce': 0,
     'water bottle': 0,
   });
   const [macroProgress, setMacroProgress] = useState<MacroProgress[]>(DEFAULT_MACRO_GOALS);
@@ -1013,7 +1023,7 @@ function CartDashboard() {
               </div>
             ) : (
               <p className="recipe-empty-state">
-                Add apples, bananas, beans, or donuts in Shopping Mode to discover ideas for your cart.
+                Add apples, bananas, frozen meals, or barbecue sauce in Shopping Mode to discover ideas for your cart.
               </p>
             )}
             {availableRecipes.length > 1 && (

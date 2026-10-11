@@ -13,11 +13,25 @@ else
 fi
 
 camera="${CAMERA_INDEX:-0}"
-model="${MODEL_PATH:-yolov8n.pt}"
+device="${DEVICE:-}"
+if [[ -n "${MODEL_PATH:-}" ]]; then
+    model="$MODEL_PATH"
+elif [[ -f "$SCRIPT_DIR/models/yolo11m.engine" ]]; then
+    model="$SCRIPT_DIR/models/yolo11m.engine"
+else
+    model="yolov8n.pt"
+    echo "[!] YOLO11m TensorRT engine not found; using YOLOv8 PyTorch fallback: $model"
+fi
 confidence="${CONFIDENCE:-0.22}"
-imgsz="${IMGSZ:-320}"
+imgsz="${IMGSZ:-640}"
 max_fps="${MAX_FPS:-5}"
-device="${DEVICE:-cpu}"
+if [[ -z "$device" ]]; then
+    if [[ "$model" == *.engine ]]; then
+        device="0"
+    else
+        device="cpu"
+    fi
+fi
 
 echo "Starting Smart Cart Tracker"
 echo "Camera: $camera | Model: $model | Device: $device"

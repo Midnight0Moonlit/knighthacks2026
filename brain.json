@@ -1,10 +1,12 @@
 {
   "foods": {
     "apples": 1,
-    "beans": 0,
-    "bananas": 0,
+    "barbecue sauce": 1,
+    "bananas": 1,
+    "frozen meal": 5,
+    "water bottle": 0,
     "donuts": 0,
-    "water bottle": 0
+    "beans": 0
   },
   "budget": 50.0,
   "nutrition": {
@@ -13,25 +15,25 @@
       "protein": 0.5,
       "fat": 0.3
     },
-    "beans": {
-      "carbs": 40.0,
-      "protein": 15.0,
-      "fat": 1.0
+    "barbecue sauce": {
+      "carbs": 15.0,
+      "protein": 0.0,
+      "fat": 0.0
     },
     "bananas": {
       "carbs": 27.0,
       "protein": 1.3,
       "fat": 0.3
     },
-    "donuts": {
-      "carbs": 31.0,
-      "protein": 3.0,
-      "fat": 14.0
+    "frozen meal": {
+      "carbs": 45.0,
+      "protein": 18.0,
+      "fat": 12.0
     }
   },
   "dietary_restrictions": [
-    "tree_nuts",
-    "peanuts"
+    "peanuts",
+    "sesame"
   ],
   "other_dietary_restrictions": [],
   "last_ai_run": 1791667482.3201132,
